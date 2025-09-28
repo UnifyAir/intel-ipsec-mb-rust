@@ -83,9 +83,9 @@ fn build_ipsec_mb(
 ) {
     // Use CMake build only
     if !cmake_build(ipsec_mb_dir, target_arch, target_os, out_dir) {
-        panic!("CMake build failed. This is likely due to NASM assembly compatibility issues on macOS. \
+        panic!("CMake build failed. This is likely due to NASM assembly compatibility issues. \
                 The Intel IPSec MB library requires NASM 2.14+ and proper assembly file support. \
-                Consider using a different NASM version or building on a Linux system.");
+                Consider using a different NASM version or building on a different system.");
     }
 }
 
@@ -191,8 +191,7 @@ fn generate_bindings(ipsec_mb_dir: &Path, out_dir: &Path) {
     
     let mut builder = bindgen::Builder::default()
         .header(header_path.to_string_lossy())
-        .clang_arg(format!("-I{}", ipsec_mb_dir.join("lib").display()))
-        .clang_arg(format!("-I{}", ipsec_mb_dir.join("include").display()));
+        .clang_arg(format!("-I{}", ipsec_mb_dir.join("lib").display()));
     
     // Add wrapper header if it exists
     let wrapper_header = PathBuf::from("wrapper").join("wrapper.h");

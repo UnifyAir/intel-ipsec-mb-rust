@@ -24,15 +24,19 @@
 #![allow(non_snake_case)]
 #![allow(clippy::all)]
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+#[allow(improper_ctypes)]
+pub mod bindings {
+    include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+}
 
-pub use IMB_MGR as ImbMgr;
-pub use IMB_JOB as ImbJob;
+pub use bindings::*;
+
+pub use bindings::IMB_MGR as ImbMgr;
+pub use bindings::IMB_JOB as ImbJob;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ptr;
 
     #[test]
     fn test_manager_allocation() {
