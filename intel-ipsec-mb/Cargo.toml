@@ -3,6 +3,14 @@ name = "intel-ipsec-mb"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+
+# Allow forcing specific architecture at runtime (increases binary size)
+# Only enable this if you need runtime architecture selection based on
+# configuration files or other runtime decisions.
+allow-forced = []
+
 [dependencies]
 intel-ipsec-mb-sys = { path = "../intel-ipsec-mb-sys" }
 

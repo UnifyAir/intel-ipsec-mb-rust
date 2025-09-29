@@ -204,7 +204,9 @@ fn generate_bindings(ipsec_mb_dir: &Path, out_dir: &Path) {
     let bindings = builder
         // Allow everything from the Intel IPSec MB header
         .allowlist_file(".*")
+        .translate_enum_integer_types(true)
         .rustified_non_exhaustive_enum("IMB_ERR")
+        .rustified_non_exhaustive_enum("IMB_ARCH")
 
         // Formatting and generation options
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
