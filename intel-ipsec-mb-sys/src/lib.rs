@@ -33,6 +33,7 @@ pub use bindings::*;
 
 pub use bindings::IMB_MGR as ImbMgr;
 pub use bindings::IMB_JOB as ImbJob;
+pub use bindings::IMB_ERR as ImbErr;
 
 #[cfg(test)]
 mod tests {
