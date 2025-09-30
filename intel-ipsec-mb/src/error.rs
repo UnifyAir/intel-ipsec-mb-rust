@@ -1,45 +1,28 @@
 use std::fmt;
 use std::ffi::CStr;
 use intel_ipsec_mb_sys::{imb_get_errno, imb_get_strerror};
-use intel_ipsec_mb_sys::ImbErr;
+use std::num::NonZeroI32;
 
 use crate::mgr::MbMgr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MbMgrError {
-    SystemError(i32),
-    ImbErr(ImbErr),
-    UnknownError(i32),
-}
+pub struct MbMgrError (NonZeroI32);
 
 impl MbMgrError {
 
-    fn get_errno(&self) -> i32 {
-        match self {
-            Self::SystemError(errno) => *errno,
-            Self::ImbErr(imb_err) => *imb_err as i32,
-            Self::UnknownError(errno) => *errno,
-        }
+    pub fn kind(&self) -> MbMgrErrorKind {
+        MbMgrErrorKind::from_code(self.0.get())
     }
 
-    // Todo: Think of something to make the size of Return 4 bytes instead of 8 bytes
-    pub fn capture(mb_mgr: &MbMgr) -> Option<Self> {
+    pub fn capture(mb_mgr: &mut MbMgr) -> Option<Self> {
         // SAFETY: The pointer passed to imb_get_errno is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let errno = unsafe { imb_get_errno(mb_mgr.as_ptr()) };
         if errno == 0 {
             return None;
         }
-        if errno < ImbErr::IMB_ERR_MIN as i32 {
-            return Some(Self::SystemError(errno));
-        }
-        if errno < ImbErr::IMB_ERR_MAX as i32 {
-            // SAFETY: This will not fail as on the C side IMB_ERR is also an enum
-            // there will surely be a mapping for the errno in enum
-            let intel_err: ImbErr = unsafe { std::mem::transmute(errno as u32) };
-            return Some(Self::ImbErr(intel_err));
-        }
-        Some(Self::UnknownError(errno))
+        // SAFETY: The errno is not zero at this point
+        Some(Self (unsafe { NonZeroI32::new_unchecked(errno) } ))
     }
     
     pub fn capture_global() -> Option<Self> {
@@ -50,16 +33,8 @@ impl MbMgrError {
         if errno == 0 {
             return None;
         }
-        if errno < ImbErr::IMB_ERR_MIN as i32{
-            return Some(Self::SystemError(errno));
-        }
-        if errno < ImbErr::IMB_ERR_MAX as i32 {
-            // SAFETY: This will not fail as on the C side IMB_ERR is also an enum
-            // there will surely be a mapping for the errno in enum
-            let intel_err: ImbErr = unsafe { std::mem::transmute(errno as u32) };
-            return Some(Self::ImbErr(intel_err));
-        }
-        Some(Self::UnknownError(errno))
+        // SAFETY: The errno is not zero at this point
+        Some(Self (unsafe { NonZeroI32::new_unchecked(errno) } ))
     }
 }
 
@@ -69,16 +44,141 @@ impl fmt::Display for MbMgrError {
         // CStr::from_ptr will give a UTF-8 string because it is hard coded 
         // in the C library or in libc
         unsafe {
-            let errno = self.get_errno();
+            let errno = self.0.get();
             let c_str = imb_get_strerror(errno);
             let message = std::str::from_utf8_unchecked(CStr::from_ptr(c_str).to_bytes());
-            match self {
-                Self::SystemError(_) => write!(f, "System Error: {}", message),
-                Self::ImbErr(_) => write!(f, "Imb Error: {}", message),
-                Self::UnknownError(_) => write!(f, "Unknown Error: {}", message),
-            }
+
+            write!(f, "{}", message)
         }
     }
 }
 
 impl std::error::Error for MbMgrError {}
+
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MbMgrErrorKind {
+    OutOfMemory,
+    
+    NullMbMgr,
+    JobNullSrc,
+    JobNullDst,
+    JobNullKey,
+    JobNullIv,
+    JobNullAuth,
+    JobNullAad,
+    JobCiphLen,
+    JobAuthLen,
+    JobIvLen,
+    JobKeyLen,
+    JobAuthTagLen,
+    JobAadLen,
+    JobSrcOffset,
+    JobChainOrder,
+    CiphMode,
+    HashAlgo,
+    JobNullAuthKey,
+    JobNullSglCtx,
+    JobNullNextIv,
+    JobPonPli,
+    NullSrc,
+    NullDst,
+    NullKey,
+    NullExpKey,
+    NullIv,
+    NullAuth,
+    NullAad,
+    CiphLen,
+    AuthLen,
+    IvLen,
+    KeyLen,
+    AuthTagLen,
+    AadLen,
+    SrcOffset,
+    NullAuthKey,
+    NullCtx,
+    JobNullHmacOpad,
+    JobNullHmacIpad,
+    JobNullXcbcK1Exp,
+    JobNullXcbcK2,
+    JobNullXcbcK3,
+    JobCiphDir,
+    JobNullGhashInitTag,
+    MissingCpuflagsInitMgr,
+    NullJob,
+    QueueSpace,
+    NullBurst,
+    BurstSize,
+    BurstOoo,
+    Selftest,
+    BurstSuiteId,
+    JobSglState,
+    
+    UnknownError(i32),
+}
+
+
+impl MbMgrErrorKind {
+    fn from_code(code: i32) -> Self {
+        match code {
+            12 => MbMgrErrorKind::OutOfMemory, // ENOMEM
+            
+            2001 => MbMgrErrorKind::NullMbMgr,
+            2002 => MbMgrErrorKind::JobNullSrc,
+            2003 => MbMgrErrorKind::JobNullDst,
+            2004 => MbMgrErrorKind::JobNullKey,
+            2005 => MbMgrErrorKind::JobNullIv,
+            2006 => MbMgrErrorKind::JobNullAuth,
+            2007 => MbMgrErrorKind::JobNullAad,
+            2008 => MbMgrErrorKind::JobCiphLen,
+            2009 => MbMgrErrorKind::JobAuthLen,
+            2010 => MbMgrErrorKind::JobIvLen,
+            2011 => MbMgrErrorKind::JobKeyLen,
+            2012 => MbMgrErrorKind::JobAuthTagLen,
+            2013 => MbMgrErrorKind::JobAadLen,
+            2014 => MbMgrErrorKind::JobSrcOffset,
+            2015 => MbMgrErrorKind::JobChainOrder,
+            2016 => MbMgrErrorKind::CiphMode,
+            2017 => MbMgrErrorKind::HashAlgo,
+            2018 => MbMgrErrorKind::JobNullAuthKey,
+            2019 => MbMgrErrorKind::JobNullSglCtx,
+            2020 => MbMgrErrorKind::JobNullNextIv,
+            2021 => MbMgrErrorKind::JobPonPli,
+            2022 => MbMgrErrorKind::NullSrc,
+            2023 => MbMgrErrorKind::NullDst,
+            2024 => MbMgrErrorKind::NullKey,
+            2025 => MbMgrErrorKind::NullExpKey,
+            2026 => MbMgrErrorKind::NullIv,
+            2027 => MbMgrErrorKind::NullAuth,
+            2028 => MbMgrErrorKind::NullAad,
+            2029 => MbMgrErrorKind::CiphLen,
+            2030 => MbMgrErrorKind::AuthLen,
+            2031 => MbMgrErrorKind::IvLen,
+            2032 => MbMgrErrorKind::KeyLen,
+            2033 => MbMgrErrorKind::AuthTagLen,
+            2034 => MbMgrErrorKind::AadLen,
+            2035 => MbMgrErrorKind::SrcOffset,
+            2036 => MbMgrErrorKind::NullAuthKey,
+            2037 => MbMgrErrorKind::NullCtx,
+            2038 => MbMgrErrorKind::JobNullHmacOpad,
+            2039 => MbMgrErrorKind::JobNullHmacIpad,
+            2040 => MbMgrErrorKind::JobNullXcbcK1Exp,
+            2041 => MbMgrErrorKind::JobNullXcbcK2,
+            2042 => MbMgrErrorKind::JobNullXcbcK3,
+            2043 => MbMgrErrorKind::JobCiphDir,
+            2044 => MbMgrErrorKind::JobNullGhashInitTag,
+            2045 => MbMgrErrorKind::MissingCpuflagsInitMgr,
+            2046 => MbMgrErrorKind::NullJob,
+            2047 => MbMgrErrorKind::QueueSpace,
+            2048 => MbMgrErrorKind::NullBurst,
+            2049 => MbMgrErrorKind::BurstSize,
+            2050 => MbMgrErrorKind::BurstOoo,
+            2051 => MbMgrErrorKind::Selftest,
+            2052 => MbMgrErrorKind::BurstSuiteId,
+            2053 => MbMgrErrorKind::JobSglState,
+            
+            _ => MbMgrErrorKind::UnknownError(code),
+        }
+    }
+}

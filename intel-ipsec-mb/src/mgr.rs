@@ -4,13 +4,16 @@ use intel_ipsec_mb_sys::{ImbMgr, alloc_mb_mgr, free_mb_mgr, init_mb_mgr_auto};
 use std::fmt;
 use std::ptr::NonNull;
 
-pub struct MbMgr {
-    mgr: NonNull<ImbMgr>,
-}
+pub struct MbMgr (NonNull<ImbMgr>);
 
 impl MbMgr {
+    // For operations that don't mutate (reading state, etc.)
     pub fn as_ptr(&self) -> *mut ImbMgr {
-        self.mgr.as_ptr()
+        self.0.as_ptr()
+    }
+    
+    pub fn as_mut_ptr(&mut self) -> *mut ImbMgr {
+        self.0.as_ptr()
     }
 }
 
@@ -18,7 +21,7 @@ impl MbMgr {
 impl fmt::Debug for MbMgr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
-            let mgr_ref = self.mgr.as_ref();
+            let mgr_ref = self.0.as_ref();
             f.debug_struct("MbMgr")
                 .field("flags", &format!("0x{:x}", mgr_ref.flags))
                 .field("features", &format!("0x{:x}", mgr_ref.features))
@@ -33,7 +36,7 @@ impl fmt::Debug for MbMgr {
 impl Drop for MbMgr {
     fn drop(&mut self) {
         unsafe {
-            free_mb_mgr(self.mgr.as_ptr());
+            free_mb_mgr(self.0.as_ptr());
         }
     }
 }
@@ -46,16 +49,15 @@ impl MbMgr {
     pub fn with_config(config: MbMgrConfig) -> Result<Self, MbMgrError> {
         unsafe {
             let mgr = alloc_mb_mgr(config.to_flags());
-
+            
             if let Some(err) = MbMgrError::capture_global() {
                 return Err(err);
             }
 
             let mgr = NonNull::new_unchecked(mgr);
-            let manager = Self { mgr };
+            let mut manager = Self (mgr);
 
-            Self::exec(&manager, |mgr| init_mb_mgr_auto(mgr, std::ptr::null_mut()))?;
-
+            Self::exec(&mut manager, |mgr| init_mb_mgr_auto(mgr, std::ptr::null_mut()))?;
 
             Ok(manager)
         }
@@ -65,11 +67,11 @@ impl MbMgr {
         MbMgrConfig::new()
     }
 
-    fn exec<F>(&self, f: F) -> Result<(), MbMgrError>
+    pub(crate) fn exec<F>(&mut self, f: F) -> Result<(), MbMgrError>
     where
         F: FnOnce(*mut ImbMgr),
     {
-        f(self.mgr.as_ptr());
+        f(self.as_mut_ptr());
 
         match MbMgrError::capture(self) {
             Some(err) => Err(err),
