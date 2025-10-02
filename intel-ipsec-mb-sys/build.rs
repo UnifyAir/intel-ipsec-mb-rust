@@ -118,6 +118,15 @@ fn cmake_build(
         ".."
     ]);
     
+    // Configure SAFE_OPTIONS based on build profile
+    let profile = env::var("PROFILE").unwrap_or_default();
+    if profile == "debug" {
+        cmake_cmd.arg("-DSAFE_OPTIONS=ON");
+    } else {
+        // Disable SAFE_OPTIONS for release builds (override the default ON)
+        cmake_cmd.arg("-DSAFE_OPTIONS=OFF");
+    }
+    
     // Set architecture-specific options
     match target_arch {
         X86_64 => {

@@ -4,16 +4,21 @@ use intel_ipsec_mb_sys::{ImbMgr, alloc_mb_mgr, free_mb_mgr, init_mb_mgr_auto};
 use std::fmt;
 use std::ptr::NonNull;
 
-pub struct MbMgr (NonNull<ImbMgr>);
+use std::marker::PhantomData;
+
+pub struct MbMgr {
+    mgr: NonNull<ImbMgr>,     
+    _not_thread_safe: PhantomData<*const ()>
+}
 
 impl MbMgr {
     // For operations that don't mutate (reading state, etc.)
     pub fn as_ptr(&self) -> *mut ImbMgr {
-        self.0.as_ptr()
+        self.mgr.as_ptr()
     }
     
     pub fn as_mut_ptr(&mut self) -> *mut ImbMgr {
-        self.0.as_ptr()
+        self.mgr.as_ptr()
     }
 }
 
@@ -21,7 +26,7 @@ impl MbMgr {
 impl fmt::Debug for MbMgr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
-            let mgr_ref = self.0.as_ref();
+            let mgr_ref = self.mgr.as_ref();
             f.debug_struct("MbMgr")
                 .field("flags", &format!("0x{:x}", mgr_ref.flags))
                 .field("features", &format!("0x{:x}", mgr_ref.features))
@@ -36,7 +41,7 @@ impl fmt::Debug for MbMgr {
 impl Drop for MbMgr {
     fn drop(&mut self) {
         unsafe {
-            free_mb_mgr(self.0.as_ptr());
+            free_mb_mgr(self.mgr.as_ptr());
         }
     }
 }
@@ -55,7 +60,10 @@ impl MbMgr {
             }
 
             let mgr = NonNull::new_unchecked(mgr);
-            let mut manager = Self (mgr);
+            let mut manager = Self {
+                mgr,
+                _not_thread_safe: PhantomData,
+            };
 
             Self::exec(&mut manager, |mgr| init_mb_mgr_auto(mgr, std::ptr::null_mut()))?;
 
