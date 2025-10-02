@@ -75,15 +75,15 @@ impl MbMgr {
         MbMgrConfig::new()
     }
 
-    pub(crate) fn exec<F>(&mut self, f: F) -> Result<(), MbMgrError>
+    pub(crate) fn exec<F, R>(&mut self, f: F) -> Result<R, MbMgrError>
     where
-        F: FnOnce(*mut ImbMgr),
+        F: FnOnce(*mut ImbMgr) -> R,
     {
-        f(self.as_mut_ptr());
+        let result = f(self.as_mut_ptr());
 
         match MbMgrError::capture(self) {
             Some(err) => Err(err),
-            None => Ok(()),
+            None => Ok(result),
         }
     }
 }

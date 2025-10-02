@@ -6,12 +6,16 @@ use std::num::NonZeroI32;
 use crate::mgr::MbMgr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MbMgrError (NonZeroI32);
+pub struct MbMgrError (pub NonZeroI32);
 
 impl MbMgrError {
 
     pub fn kind(&self) -> MbMgrErrorKind {
         MbMgrErrorKind::from_code(self.0.get())
+    }
+
+    pub fn from_kind(kind: MbMgrErrorKind) -> Self {
+        Self(NonZeroI32::new(kind.to_code()).unwrap())
     }
 
     pub fn capture(mb_mgr: &mut MbMgr) -> Option<Self> {
@@ -40,6 +44,10 @@ impl MbMgrError {
 
 impl fmt::Display for MbMgrError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0.get() > 3000 {
+            return write!(f, "Rust implementation error: {}", self.kind().to_code());
+        } 
+
         // SAFETY: imb_get_strerror is a safe function
         // CStr::from_ptr will give a UTF-8 string because it is hard coded 
         // in the C library or in libc
@@ -114,12 +122,80 @@ pub enum MbMgrErrorKind {
     Selftest,
     BurstSuiteId,
     JobSglState,
+
+    InvalidOutputSize,
+    IllegalJobState,
     
     UnknownError(i32),
 }
 
 
 impl MbMgrErrorKind {
+    pub fn to_code(self) -> i32 {
+        match self {
+            MbMgrErrorKind::OutOfMemory => 12,
+            MbMgrErrorKind::NullMbMgr => 2001,
+            MbMgrErrorKind::JobNullSrc => 2002,
+            MbMgrErrorKind::JobNullDst => 2003,
+            MbMgrErrorKind::JobNullKey => 2004,
+            MbMgrErrorKind::JobNullIv => 2005,
+            MbMgrErrorKind::JobNullAuth => 2006,
+            MbMgrErrorKind::JobNullAad => 2007,
+            MbMgrErrorKind::JobCiphLen => 2008,
+            MbMgrErrorKind::JobAuthLen => 2009,
+            MbMgrErrorKind::JobIvLen => 2010,
+            MbMgrErrorKind::JobKeyLen => 2011,
+            MbMgrErrorKind::JobAuthTagLen => 2012,
+            MbMgrErrorKind::JobAadLen => 2013,
+            MbMgrErrorKind::JobSrcOffset => 2014,
+            MbMgrErrorKind::JobChainOrder => 2015,
+            MbMgrErrorKind::CiphMode => 2016,
+            MbMgrErrorKind::HashAlgo => 2017,
+            MbMgrErrorKind::JobNullAuthKey => 2018,
+            MbMgrErrorKind::JobNullSglCtx => 2019,
+            MbMgrErrorKind::JobNullNextIv => 2020,
+            MbMgrErrorKind::JobPonPli => 2021,
+            MbMgrErrorKind::NullSrc => 2022,
+            MbMgrErrorKind::NullDst => 2023,
+            MbMgrErrorKind::NullKey => 2024,
+            MbMgrErrorKind::NullExpKey => 2025,
+            MbMgrErrorKind::NullIv => 2026,
+            MbMgrErrorKind::NullAuth => 2027,
+            MbMgrErrorKind::NullAad => 2028,
+            MbMgrErrorKind::CiphLen => 2029,
+            MbMgrErrorKind::AuthLen => 2030,
+            MbMgrErrorKind::IvLen => 2031,
+            MbMgrErrorKind::KeyLen => 2032,
+            MbMgrErrorKind::AuthTagLen => 2033,
+            MbMgrErrorKind::AadLen => 2034,
+            MbMgrErrorKind::SrcOffset => 2035,
+            MbMgrErrorKind::NullAuthKey => 2036,
+            MbMgrErrorKind::NullCtx => 2037,
+            MbMgrErrorKind::JobNullHmacOpad => 2038,
+            MbMgrErrorKind::JobNullHmacIpad => 2039,
+            MbMgrErrorKind::JobNullXcbcK1Exp => 2040,
+            MbMgrErrorKind::JobNullXcbcK2 => 2041,
+            MbMgrErrorKind::JobNullXcbcK3 => 2042,
+            MbMgrErrorKind::JobCiphDir => 2043,
+            MbMgrErrorKind::JobNullGhashInitTag => 2044,
+            MbMgrErrorKind::MissingCpuflagsInitMgr => 2045,
+            MbMgrErrorKind::NullJob => 2046,
+            MbMgrErrorKind::QueueSpace => 2047,
+            MbMgrErrorKind::NullBurst => 2048,
+            MbMgrErrorKind::BurstSize => 2049,
+            MbMgrErrorKind::BurstOoo => 2050,
+            MbMgrErrorKind::Selftest => 2051,
+            MbMgrErrorKind::BurstSuiteId => 2052,
+            MbMgrErrorKind::JobSglState => 2053,
+
+            // Rust implementation errors (codes > 3000)
+            MbMgrErrorKind::InvalidOutputSize => 3001,
+            MbMgrErrorKind::IllegalJobState => 3002,
+
+            MbMgrErrorKind::UnknownError(code) => code,
+        }
+    }
+
     fn from_code(code: i32) -> Self {
         match code {
             12 => MbMgrErrorKind::OutOfMemory, // ENOMEM
@@ -177,7 +253,11 @@ impl MbMgrErrorKind {
             2051 => MbMgrErrorKind::Selftest,
             2052 => MbMgrErrorKind::BurstSuiteId,
             2053 => MbMgrErrorKind::JobSglState,
-            
+
+            // Rust implementation errors (codes > 3000)
+            3001 => MbMgrErrorKind::InvalidOutputSize,
+            3002 => MbMgrErrorKind::IllegalJobState,
+
             _ => MbMgrErrorKind::UnknownError(code),
         }
     }
