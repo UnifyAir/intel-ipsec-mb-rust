@@ -1,10 +1,10 @@
 use crate::error::{MbMgrError, MbMgrErrorKind};
 use crate::mgr::MbMgr;
 use intel_ipsec_mb_sys::*;
-use intel_ipsec_mb_sys::ImbJob;
 use crate::job::MbJob;
 use std::os::raw::c_void;
 
+// Todo: make this cpu arch dependent
 
 pub trait Sha1 {
     fn sha1(
@@ -92,13 +92,13 @@ impl Sha1 for MbMgr {
             return Err(MbMgrError::from_kind(MbMgrErrorKind::InvalidOutputSize));
         }
         
-        // Get owned copy of ImbJob
-        let mut imb_job: ImbJob = unsafe { *job.as_mut_ptr()? };
+        // Get mutable reference to ImbJob
+        let imb_job = unsafe { &mut *job.as_mut_ptr() };
         
         // Set hash algorithm to plain SHA-1
         imb_job.hash_alg = IMB_HASH_ALG_IMB_AUTH_SHA_1;
         
-        // Configure the input buffer (using __bindgen_anon_1 for src)
+        // Configure the input buffer
         imb_job.__bindgen_anon_1.src = buffer_slice.as_ptr();
         imb_job.hash_start_src_offset_in_bytes = 0;
         imb_job.__bindgen_anon_5.msg_len_to_hash_in_bytes = buffer_slice.len() as u64;
@@ -107,8 +107,26 @@ impl Sha1 for MbMgr {
         imb_job.auth_tag_output = output_slice.as_mut_ptr();
         imb_job.auth_tag_output_len_in_bytes = IMB_SHA1_DIGEST_SIZE_IN_BYTES as u64;
         
-        // Initialize status
-        imb_job.status = IMB_STATUS_IMB_STATUS_COMPLETED;
+        // Use HASH_CIPHER order so it goes through SUBMIT_JOB_HASH
+        imb_job.chain_order = IMB_CHAIN_ORDER_IMB_ORDER_HASH_CIPHER;
+        
+        // Set cipher mode to NULL
+        imb_job.cipher_mode = IMB_CIPHER_MODE_IMB_CIPHER_NULL;
+        
+        // For NULL cipher with HASH_CIPHER order
+        imb_job.__bindgen_anon_4.msg_len_to_cipher_in_bytes = 0;
+        imb_job.__bindgen_anon_3.cipher_start_src_offset_in_bytes = 0;
+        imb_job.__bindgen_anon_2.dst = buffer_slice.as_ptr() as *mut u8;
+        
+        // Set cipher direction (required even for NULL cipher)
+        imb_job.cipher_direction = IMB_CIPHER_DIRECTION_IMB_DIR_ENCRYPT;
+        
+        // Clear key and IV fields
+        imb_job.enc_keys = std::ptr::null();
+        imb_job.dec_keys = std::ptr::null();
+        imb_job.key_len_in_bytes = 0;
+        imb_job.iv = std::ptr::null();
+        imb_job.iv_len_in_bytes = 0;
         
         Ok(())
     }

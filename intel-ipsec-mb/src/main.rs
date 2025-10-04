@@ -14,10 +14,17 @@ fn main() {
 
 
     let mut job =mgr.get_next_job().unwrap();
-    let _fill= mgr.fill_job(&mut job, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], &mut output);
+    let mut output1 = Vec::new();
+    output1.resize(20 as usize, 0);
+    let _fill= mgr.fill_job(&mut job, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], &mut output1);
     let _hash = mgr.submit_job();
     match _hash {
-        Ok(_) => println!("Hash: {:?}", output),
+        Ok(_) => println!("Hash: {:?}", output1),
+        Err(e) => println!("Error: {:}", e),
+    }
+    let _hash = mgr.flush_job();
+    match _hash {
+        Ok(_) => println!("Hash: {:?}", output1),
         Err(e) => println!("Error: {:}", e),
     }
 

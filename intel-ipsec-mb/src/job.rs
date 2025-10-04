@@ -1,25 +1,24 @@
-use crate::error::{MbMgrError, MbMgrErrorKind};
+use crate::error::MbMgrError;
 use crate::mgr::MbMgr;
 use intel_ipsec_mb_sys::ImbJob;
 use std::ptr::NonNull;
 
 
 // Todo: remove this non null as soon as possible, MbJob will be null when return via get_completed_job or submit_job
-pub struct MbJob(Option<NonNull<ImbJob>>);
+pub struct MbJob(pub(crate) Option<NonNull<ImbJob>>);
 
 impl MbJob {
-    pub fn as_ptr(&self) -> Result<*const ImbJob, MbMgrError> {
-        match self.0 {
-            Some(job) => Ok(job.as_ptr()),
-            None => Err(MbMgrError::from_kind(MbMgrErrorKind::IllegalJobState)),
-        }
+
+    pub fn as_ptr(&self) -> *const ImbJob {
+        // SAFETY: as_ptr should only be called when the job is not null,
+        // if the user is calling this on None, it will panic
+        self.0.unwrap().as_ptr()
     }
 
-    pub fn as_mut_ptr(&mut self) -> Result<*mut ImbJob, MbMgrError> {
-        match self.0 {
-            Some(job) => Ok(job.as_ptr()),
-            None => Err(MbMgrError::from_kind(MbMgrErrorKind::IllegalJobState)),
-        }
+    pub fn as_mut_ptr(&mut self) -> *mut ImbJob {
+        // SAFETY: as_ptr should only be called when the job is not null,
+        // if the user is calling this on None, it will panic
+        self.0.unwrap().as_ptr()
     }
 
     // pub fn get_status(&self) -> Result<u32, MbMgrError> {

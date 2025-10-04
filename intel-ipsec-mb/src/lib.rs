@@ -15,3 +15,5 @@ pub mod hash;
 //Todo: add cpu specific function call as per cargo build flags, e.g. if avx512f is enabled, then use the avx512f function call
 // currently we are using the runtime detection which is not the best option
 // possible implementation would to use const trait or something
+// Todo: fix all import in this crate, currently we are importing "*" everywhere for ease
+// remove Copy from IMB_MGR and IMB_JOB since they should be only on heap
