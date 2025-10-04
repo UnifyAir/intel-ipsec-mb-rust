@@ -7,7 +7,7 @@ use std::ptr::NonNull;
 use std::marker::PhantomData;
 
 pub struct MbMgr {
-    mgr: NonNull<ImbMgr>,     
+    mgr: NonNull<ImbMgr>,
     _not_thread_safe: PhantomData<*const ()>
 }
 

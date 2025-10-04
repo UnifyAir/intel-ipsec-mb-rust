@@ -5,7 +5,7 @@ use std::ptr::NonNull;
 
 
 // Todo: remove this non null as soon as possible, MbJob will be null when return via get_completed_job or submit_job
-pub struct MbJob(pub(crate) Option<NonNull<ImbJob>>);
+pub struct MbJob(pub Option<NonNull<ImbJob>>);
 
 impl MbJob {
 
@@ -28,6 +28,16 @@ impl MbJob {
     //         let get_status_fn = (*job_mut_ptr).get_status.unwrap();
     //         get_status_fn(job_mut_ptr)
     //     })?;
+}
+
+pub struct MbJobHandle<'buf, 'out, F>
+where
+    F: FnOnce,
+{
+    callback: Option<F>,
+    job: NonNull<ImbJob>,
+    _input_lifetime: PhantomData<&'buf [u8]>,
+    _output_lifetime: PhantomData<&'out mut [u8]>,
 }
 
 impl MbMgr {
@@ -95,3 +105,4 @@ impl MbMgr {
     }
 
 }
+

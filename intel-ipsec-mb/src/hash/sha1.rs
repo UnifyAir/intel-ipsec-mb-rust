@@ -1,42 +1,15 @@
 use crate::error::{MbMgrError, MbMgrErrorKind};
+use crate::job::MbJob;
 use crate::mgr::MbMgr;
 use intel_ipsec_mb_sys::*;
-use crate::job::MbJob;
 use std::os::raw::c_void;
 
-// Todo: make this cpu arch dependent
-
-pub trait Sha1 {
-    fn sha1(
-        &mut self,
-        buffer: impl AsRef<[u8]>,
-        output: impl AsMut<[u8]>,
-    ) -> Result<(), MbMgrError>;
-
-    fn sha1_one_block(
-        &mut self,
-        buffer: impl AsRef<[u8]>,
-        output: impl AsMut<[u8]>,
-    ) -> Result<(), MbMgrError>;
-
-    fn fill_job(
-        &mut self,
-        job: &mut MbJob,
-        buffer: impl AsRef<[u8]>,
-        output: impl AsMut<[u8]>,
-    ) -> Result<(), MbMgrError>;
-
-}
-
-// Todo fix this usize
-// Todo: fix this unwrap in the future
-impl Sha1 for MbMgr {
-    /// Compute SHA-1 hash of the input buffer
-    fn sha1(
-        &mut self,
-        buffer: impl AsRef<[u8]>,
-        mut output: impl AsMut<[u8]>,
-    ) -> Result<(), MbMgrError> {
+impl MbMgr {
+    pub fn sha1<B, O>(&mut self, buffer: &B, output: &mut O) -> Result<(), MbMgrError>
+    where
+        B: AsRef<[u8]>,
+        O: AsMut<[u8]>,
+    {
         let buffer_slice = buffer.as_ref();
         let output_slice = output.as_mut();
 
@@ -44,6 +17,7 @@ impl Sha1 for MbMgr {
             return Err(MbMgrError::from_kind(MbMgrErrorKind::InvalidOutputSize));
         }
 
+        // SAFETY: The MbMgr is assumed to be properly initialized before this.
         self.exec(|mgr_mut_ptr| unsafe {
             let sha1_fn = (*mgr_mut_ptr).sha1.unwrap();
             sha1_fn(
@@ -55,13 +29,11 @@ impl Sha1 for MbMgr {
         Ok(())
     }
 
-    /// Compute SHA-1 hash of one block (64 bytes)
-    fn sha1_one_block(
-        &mut self,
-        buffer: impl AsRef<[u8]>,
-        mut output: impl AsMut<[u8]>,
-    ) -> Result<(), MbMgrError> {
-
+    pub fn sha1_one_block(&mut self, buffer: &B, output: &mut O) -> Result<(), MbMgrError>
+    where
+        B: AsRef<[u8]>,
+        O: AsMut<[u8]>,
+    {
         let buffer_slice = buffer.as_ref();
         let output_slice = output.as_mut();
 
@@ -69,6 +41,7 @@ impl Sha1 for MbMgr {
             return Err(MbMgrError::from_kind(MbMgrErrorKind::InvalidOutputSize));
         }
 
+        // SAFETY: The MbMgr is assumed to be properly initialized before this.
         self.exec(|mgr_mut_ptr| unsafe {
             let sha1_fn = (*mgr_mut_ptr).sha1_one_block.unwrap();
             sha1_fn(
@@ -79,7 +52,7 @@ impl Sha1 for MbMgr {
         Ok(())
     }
 
-    fn fill_job(
+    pub fn fill_job_sha1(
         &mut self,
         job: &mut MbJob,
         buffer: impl AsRef<[u8]>,
@@ -87,47 +60,43 @@ impl Sha1 for MbMgr {
     ) -> Result<(), MbMgrError> {
         let buffer_slice = buffer.as_ref();
         let output_slice = output.as_mut();
-        
+
         if output_slice.len() < IMB_SHA1_DIGEST_SIZE_IN_BYTES as usize {
             return Err(MbMgrError::from_kind(MbMgrErrorKind::InvalidOutputSize));
         }
-        
-        // Get mutable reference to ImbJob
+
+        // SAFETY: The MbMgr is assumed to be properly initialized before this.
+        // The MbMgr instance must be properly initialized before calling fill_job_sha1.
+        // This function assumes that the underlying manager pointer is valid and points to a
+        // correctly initialized IMB_MGR structure. If the manager is not initialized, using
+        // the returned job pointer or filling the job may result in undefined behavior.
         let imb_job = unsafe { &mut *job.as_mut_ptr() };
-        
-        // Set hash algorithm to plain SHA-1
+
         imb_job.hash_alg = IMB_HASH_ALG_IMB_AUTH_SHA_1;
-        
-        // Configure the input buffer
+
         imb_job.__bindgen_anon_1.src = buffer_slice.as_ptr();
         imb_job.hash_start_src_offset_in_bytes = 0;
         imb_job.__bindgen_anon_5.msg_len_to_hash_in_bytes = buffer_slice.len() as u64;
-        
-        // Configure the output buffer for auth tag
+
         imb_job.auth_tag_output = output_slice.as_mut_ptr();
         imb_job.auth_tag_output_len_in_bytes = IMB_SHA1_DIGEST_SIZE_IN_BYTES as u64;
-        
-        // Use HASH_CIPHER order so it goes through SUBMIT_JOB_HASH
+
         imb_job.chain_order = IMB_CHAIN_ORDER_IMB_ORDER_HASH_CIPHER;
-        
-        // Set cipher mode to NULL
+
         imb_job.cipher_mode = IMB_CIPHER_MODE_IMB_CIPHER_NULL;
-        
-        // For NULL cipher with HASH_CIPHER order
+
         imb_job.__bindgen_anon_4.msg_len_to_cipher_in_bytes = 0;
         imb_job.__bindgen_anon_3.cipher_start_src_offset_in_bytes = 0;
         imb_job.__bindgen_anon_2.dst = buffer_slice.as_ptr() as *mut u8;
-        
-        // Set cipher direction (required even for NULL cipher)
+
         imb_job.cipher_direction = IMB_CIPHER_DIRECTION_IMB_DIR_ENCRYPT;
-        
-        // Clear key and IV fields
+
         imb_job.enc_keys = std::ptr::null();
         imb_job.dec_keys = std::ptr::null();
         imb_job.key_len_in_bytes = 0;
         imb_job.iv = std::ptr::null();
         imb_job.iv_len_in_bytes = 0;
-        
+
         Ok(())
     }
 }
