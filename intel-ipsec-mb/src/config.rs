@@ -1,7 +1,7 @@
 use intel_ipsec_mb_sys::{IMB_FLAG_SHANI_OFF, IMB_FLAG_GFNI_OFF};
 use intel_ipsec_mb_sys::ImbArch;
 use crate::mgr::MbMgr;
-use crate::error::MbMgrError;
+use crate::error::MbError;
 
 /// Configuration for Multi-Buffer Manager
 #[derive(Debug, Clone)]
@@ -212,7 +212,7 @@ impl MbMgrConfig {
     ///     .disable_gfni()
     ///     .build()?;
     /// ```
-    pub fn build(self) -> Result<MbMgr, MbMgrError> {
+    pub fn build(self) -> Result<MbMgr, MbError> {
         MbMgr::with_config(self)
     }
     

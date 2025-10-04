@@ -6,9 +6,9 @@ use std::num::NonZeroI32;
 use crate::mgr::MbMgr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MbMgrError (pub NonZeroI32);
+pub struct MbError (pub NonZeroI32);
 
-impl MbMgrError {
+impl MbError {
 
     pub fn kind(&self) -> MbMgrErrorKind {
         MbMgrErrorKind::from_code(self.0.get())
@@ -18,7 +18,7 @@ impl MbMgrError {
         Self(NonZeroI32::new(kind.to_code()).unwrap())
     }
 
-    pub fn capture(mb_mgr: &mut MbMgr) -> Option<Self> {
+    pub fn capture(mb_mgr: &MbMgr) -> Option<Self> {
         // SAFETY: The pointer passed to imb_get_errno is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let errno = unsafe { imb_get_errno(mb_mgr.as_ptr()) };
@@ -42,7 +42,7 @@ impl MbMgrError {
     }
 }
 
-impl fmt::Display for MbMgrError {
+impl fmt::Display for MbError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.0.get() > 3000 {
             return write!(f, "Rust implementation error: {}", self.kind().to_code());
@@ -61,7 +61,7 @@ impl fmt::Display for MbMgrError {
     }
 }
 
-impl std::error::Error for MbMgrError {}
+impl std::error::Error for MbError {}
 
 
 

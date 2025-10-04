@@ -1,11 +1,11 @@
-use crate::error::{MbMgrError, MbMgrErrorKind};
+use crate::error::{MbError, MbMgrErrorKind};
 use crate::job::MbJob;
 use crate::mgr::MbMgr;
 use intel_ipsec_mb_sys::*;
 use std::os::raw::c_void;
 
 impl MbMgr {
-    pub fn sha1<B, O>(&mut self, buffer: &B, output: &mut O) -> Result<(), MbMgrError>
+    pub fn sha1<B, O>(&self, buffer: &B, output: &mut O) -> Result<(), MbError>
     where
         B: AsRef<[u8]>,
         O: AsMut<[u8]>,
@@ -14,12 +14,12 @@ impl MbMgr {
         let output_slice = output.as_mut();
 
         if output_slice.len() < IMB_SHA1_DIGEST_SIZE_IN_BYTES as usize {
-            return Err(MbMgrError::from_kind(MbMgrErrorKind::InvalidOutputSize));
+            return Err(MbError::from_kind(MbMgrErrorKind::InvalidOutputSize));
         }
 
         // SAFETY: The MbMgr is assumed to be properly initialized before this.
-        self.exec(|mgr_mut_ptr| unsafe {
-            let sha1_fn = (*mgr_mut_ptr).sha1.unwrap();
+        self.exec(|mgr_ptr| unsafe {
+            let sha1_fn = (*mgr_ptr).sha1.unwrap();
             sha1_fn(
                 buffer_slice.as_ptr() as *const c_void,
                 buffer_slice.len() as u64,
@@ -29,40 +29,40 @@ impl MbMgr {
         Ok(())
     }
 
-    pub fn sha1_one_block(&mut self, buffer: &B, output: &mut O) -> Result<(), MbMgrError>
-    where
-        B: AsRef<[u8]>,
-        O: AsMut<[u8]>,
-    {
-        let buffer_slice = buffer.as_ref();
-        let output_slice = output.as_mut();
+    // pub fn sha1_one_block<B, O>(&mut self, buffer: &B, output: &mut O) -> Result<(), MbMgrError>
+    // where
+    //     B: AsRef<[u8]>,
+    //     O: AsMut<[u8]>,
+    // {
+    //     let buffer_slice = buffer.as_ref();
+    //     let output_slice = output.as_mut();
 
-        if output_slice.len() < IMB_SHA1_DIGEST_SIZE_IN_BYTES as usize {
-            return Err(MbMgrError::from_kind(MbMgrErrorKind::InvalidOutputSize));
-        }
+    //     if output_slice.len() < IMB_SHA1_DIGEST_SIZE_IN_BYTES as usize {
+    //         return Err(MbMgrError::from_kind(MbMgrErrorKind::InvalidOutputSize));
+    //     }
 
-        // SAFETY: The MbMgr is assumed to be properly initialized before this.
-        self.exec(|mgr_mut_ptr| unsafe {
-            let sha1_fn = (*mgr_mut_ptr).sha1_one_block.unwrap();
-            sha1_fn(
-                buffer_slice.as_ptr() as *const c_void,
-                output_slice.as_mut_ptr() as *mut c_void,
-            );
-        })?;
-        Ok(())
-    }
+    //     // SAFETY: The MbMgr is assumed to be properly initialized before this.
+    //     self.exec(|mgr_mut_ptr| unsafe {
+    //         let sha1_fn = (*mgr_mut_ptr).sha1_one_block.unwrap();
+    //         sha1_fn(
+    //             buffer_slice.as_ptr() as *const c_void,
+    //             output_slice.as_mut_ptr() as *mut c_void,
+    //         );
+    //     })?;
+    //     Ok(())
+    // }
 
     pub fn fill_job_sha1(
-        &mut self,
+        &self,
         job: &mut MbJob,
         buffer: impl AsRef<[u8]>,
         mut output: impl AsMut<[u8]>,
-    ) -> Result<(), MbMgrError> {
+    ) -> Result<(), MbError> {
         let buffer_slice = buffer.as_ref();
         let output_slice = output.as_mut();
 
         if output_slice.len() < IMB_SHA1_DIGEST_SIZE_IN_BYTES as usize {
-            return Err(MbMgrError::from_kind(MbMgrErrorKind::InvalidOutputSize));
+            return Err(MbError::from_kind(MbMgrErrorKind::InvalidOutputSize));
         }
 
         // SAFETY: The MbMgr is assumed to be properly initialized before this.

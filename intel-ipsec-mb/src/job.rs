@@ -1,7 +1,10 @@
-use crate::error::MbMgrError;
+use crate::error::MbError;
 use crate::mgr::MbMgr;
 use intel_ipsec_mb_sys::ImbJob;
 use std::ptr::NonNull;
+use std::marker::PhantomData;
+use intel_ipsec_mb_sys::ImbMgr;
+use intel_ipsec_mb_sys::ImbStatus;
 
 
 // Todo: remove this non null as soon as possible, MbJob will be null when return via get_completed_job or submit_job
@@ -30,18 +33,10 @@ impl MbJob {
     //     })?;
 }
 
-pub struct MbJobHandle<'buf, 'out, F>
-where
-    F: FnOnce,
-{
-    callback: Option<F>,
-    job: NonNull<ImbJob>,
-    _input_lifetime: PhantomData<&'buf [u8]>,
-    _output_lifetime: PhantomData<&'out mut [u8]>,
-}
+
 
 impl MbMgr {
-    pub fn get_next_job(&mut self) -> Result<MbJob, MbMgrError> {
+    pub fn get_next_job(&self) -> Result<MbJob, MbError> {
         // SAFETY: The pointer passed to get_next_job is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let job = self.exec(|mgr_mut_ptr| unsafe {
@@ -55,7 +50,15 @@ impl MbMgr {
         Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
     }
 
-    pub fn submit_job(&mut self) -> Result<MbJob, MbMgrError> {
+    pub fn submit_job(&self, job: &MbJob) -> Result<(MbJobGuard<'_, '_, '_>, Option<MbJob>), MbError> {
+        debug_assert!(job.0.is_some(), "MbJob passed to submit_job must not be None");
+        //SAFETY: The job is not Option::None, if it is null, the user should not be calling this function
+        let submit_job_guard = MbJobGuard {
+            job: job.0.unwrap(),
+            _manager: PhantomData,
+            _input: PhantomData,
+            _output: PhantomData,
+        };
         // SAFETY: The pointer passed to submit_job is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let job = self.exec(|mgr_mut_ptr| unsafe {
@@ -63,12 +66,12 @@ impl MbMgr {
             submit_job_fn(mgr_mut_ptr)
         })?;
         if job.is_null() {
-            return Ok(MbJob(None));
+            return Ok((submit_job_guard, None));
         }
-        Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
+        Ok((submit_job_guard, Some(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))))
     }
 
-    pub fn get_completed_job(&mut self) -> Result<MbJob, MbMgrError> {
+    pub fn get_completed_job(&self) -> Result<MbJob, MbError> {
         // SAFETY: The pointer passed to get_completed_job is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let job = self.exec(|mgr_mut_ptr| unsafe {
@@ -81,7 +84,7 @@ impl MbMgr {
         Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
     }
 
-    pub fn flush_job(&mut self) -> Result<MbJob, MbMgrError> {
+    pub fn flush_job(&self) -> Result<MbJob, MbError> {
         // SAFETY: The pointer passed to flush_job is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let job =self.exec(|mgr_mut_ptr| unsafe {
@@ -94,7 +97,7 @@ impl MbMgr {
         Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
     }
 
-    pub fn queue_size(&mut self) -> Result<u32, MbMgrError> {
+    pub fn queue_size(&self) -> Result<u32, MbError> {
         // SAFETY: The pointer passed to queue_size is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let size = self.exec(|mgr_mut_ptr| unsafe {
@@ -106,3 +109,29 @@ impl MbMgr {
 
 }
 
+
+#[must_use = "Job must be completed"]
+pub struct MbJobGuard<'mgr, 'buf, 'out> {
+    job: NonNull<ImbJob>,
+    _manager: PhantomData<&'mgr ImbMgr>,
+    _input: PhantomData<&'buf [u8]>,
+    _output: PhantomData<&'out mut [u8]>,
+}
+
+impl<'mgr, 'buf, 'out> MbJobGuard<'mgr, 'buf, 'out> {
+    pub fn status(&self) -> Result<ImbStatus, MbError> {
+        // SAFETY: The job is not Option::None, if it is null, the user should not be calling this function
+        let status = unsafe { (*self.job.as_ptr()).status };
+        Ok(status)
+    }
+    
+}
+
+impl Drop for MbJobGuard<'_, '_, '_> {
+    fn drop(&mut self) {
+        panic!(
+            "MbJobGuard dropped before completion!\n\
+             This would cause use-after-free. You must call try_complete() or wait_complete()."
+        );
+    }
+}

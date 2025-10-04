@@ -2,7 +2,7 @@ use intel_ipsec_mb::mgr::MbMgr;
 
 
 fn main() {
-    let mut mgr = MbMgr::new().unwrap();
+    let mgr = MbMgr::new().unwrap();
     let mut output = Vec::new();
     output.resize(20 as usize, 0);
     let _hash = mgr.sha1(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], &mut output);

@@ -1,5 +1,5 @@
 use crate::config::MbMgrConfig;
-use crate::error::MbMgrError;
+use crate::error::MbError;
 use intel_ipsec_mb_sys::{ImbMgr, alloc_mb_mgr, free_mb_mgr, init_mb_mgr_auto};
 use std::fmt;
 use std::ptr::NonNull;
@@ -17,9 +17,11 @@ impl MbMgr {
         self.mgr.as_ptr()
     }
     
-    pub fn as_mut_ptr(&mut self) -> *mut ImbMgr {
-        self.mgr.as_ptr()
-    }
+    // Temporary disabled as we are not using it, it was there for
+    // safety, but it is not needed
+    // pub fn as_mut_ptr(&mut self) -> *mut ImbMgr {
+    //     self.mgr.as_ptr()
+    // }
 }
 
 //Todo fix this
@@ -47,15 +49,15 @@ impl Drop for MbMgr {
 }
 
 impl MbMgr {
-    pub fn new() -> Result<Self, MbMgrError> {
+    pub fn new() -> Result<Self, MbError> {
         Self::with_config(MbMgrConfig::default())
     }
 
-    pub fn with_config(config: MbMgrConfig) -> Result<Self, MbMgrError> {
+    pub fn with_config(config: MbMgrConfig) -> Result<Self, MbError> {
         unsafe {
             let mgr = alloc_mb_mgr(config.to_flags());
             
-            if let Some(err) = MbMgrError::capture_global() {
+            if let Some(err) = MbError::capture_global() {
                 return Err(err);
             }
 
@@ -75,13 +77,13 @@ impl MbMgr {
         MbMgrConfig::new()
     }
 
-    pub(crate) fn exec<F, R>(&mut self, f: F) -> Result<R, MbMgrError>
+    pub(crate) fn exec<F, R>(&self, f: F) -> Result<R, MbError>
     where
         F: FnOnce(*mut ImbMgr) -> R,
     {
-        let result = f(self.as_mut_ptr());
+        let result = f(self.as_ptr());
 
-        match MbMgrError::capture(self) {
+        match MbError::capture(self) {
             Some(err) => Err(err),
             None => Ok(result),
         }

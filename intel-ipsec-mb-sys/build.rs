@@ -216,6 +216,7 @@ fn generate_bindings(ipsec_mb_dir: &Path, out_dir: &Path) {
         .translate_enum_integer_types(true)
         .rustified_non_exhaustive_enum("IMB_ERR")
         .rustified_non_exhaustive_enum("IMB_ARCH")
+        .rustified_non_exhaustive_enum("IMB_STATUS")
 
         // Formatting and generation options
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))

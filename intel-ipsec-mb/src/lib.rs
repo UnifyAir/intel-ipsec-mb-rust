@@ -4,6 +4,7 @@ pub mod error;
 pub mod config;
 pub mod job;
 pub mod runtime;
+pub mod job_ring;
 
 pub mod hash;
 
@@ -26,3 +27,6 @@ pub mod hash;
 //Todo: think about the lifetime of output and buffer, as the slice will process later in time.
 //Todo: combine get_next_job, fill job and submit job
 //Todo: for advanced usage give above todo func as unsafe funcs
+// Todo: fix naming of mb_mgr and mgr, there is some inconsistency
+// Todo: add derive debug, copy and suitable traits where needed
+// Todo: to reduce runtime ovehead, add bdebuf assertions
