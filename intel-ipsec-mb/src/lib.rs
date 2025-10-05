@@ -30,3 +30,9 @@ pub mod hash;
 // Todo: fix naming of mb_mgr and mgr, there is some inconsistency
 // Todo: add derive debug, copy and suitable traits where needed
 // Todo: to reduce runtime ovehead, add bdebuf assertions
+// Todo: why the below need mut output
+//pub fn fill_job_sha1(
+    // &self,
+    // job: &mut MbJob,
+    // buffer: impl AsRef<[u8]>,
+    // mut output: impl AsMut<[u8]>,

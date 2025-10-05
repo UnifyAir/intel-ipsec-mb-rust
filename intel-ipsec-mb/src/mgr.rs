@@ -8,8 +8,10 @@ use std::marker::PhantomData;
 
 pub struct MbMgr {
     mgr: NonNull<ImbMgr>,
+    // outstanding_jobs: RefCell<HashMap<MbJob, JobState>>,
     _not_thread_safe: PhantomData<*const ()>
 }
+
 
 impl MbMgr {
     // For operations that don't mutate (reading state, etc.)

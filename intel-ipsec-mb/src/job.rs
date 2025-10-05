@@ -36,7 +36,12 @@ impl MbJob {
 
 
 impl MbMgr {
-    pub fn get_next_job(&self) -> Result<MbJob, MbError> {
+
+    // pub fn publish_job(&self) -> Result<MbJobGuard, MbError> {
+
+    // }
+
+    pub unsafe fn get_next_job(&self) -> Result<MbJob, MbError> {
         // SAFETY: The pointer passed to get_next_job is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let job = self.exec(|mgr_mut_ptr| unsafe {
@@ -50,15 +55,7 @@ impl MbMgr {
         Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
     }
 
-    pub fn submit_job(&self, job: &MbJob) -> Result<(MbJobGuard<'_, '_, '_>, Option<MbJob>), MbError> {
-        debug_assert!(job.0.is_some(), "MbJob passed to submit_job must not be None");
-        //SAFETY: The job is not Option::None, if it is null, the user should not be calling this function
-        let submit_job_guard = MbJobGuard {
-            job: job.0.unwrap(),
-            _manager: PhantomData,
-            _input: PhantomData,
-            _output: PhantomData,
-        };
+    pub unsafe fn submit_job(&self) -> Result<MbJob, MbError> {
         // SAFETY: The pointer passed to submit_job is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let job = self.exec(|mgr_mut_ptr| unsafe {
@@ -66,12 +63,28 @@ impl MbMgr {
             submit_job_fn(mgr_mut_ptr)
         })?;
         if job.is_null() {
-            return Ok((submit_job_guard, None));
+            return Ok(MbJob(None));
         }
-        Ok((submit_job_guard, Some(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))))
+        //SAFETY: At this point the job is not null
+        Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
     }
 
-    pub fn get_completed_job(&self) -> Result<MbJob, MbError> {
+
+    pub unsafe fn submit_job_nocheck(&self) -> Result<MbJob, MbError> {
+        // SAFETY: The pointer passed to submit_job_nocheck is assumed to be valid otherwise we
+        // would not be having a MbMgr instance
+        let job = self.exec(|mgr_mut_ptr| unsafe {
+            let submit_job_nocheck_fn = (*mgr_mut_ptr).submit_job_nocheck.unwrap();
+            submit_job_nocheck_fn(mgr_mut_ptr)
+        })?;
+        if job.is_null() {
+            return Ok(MbJob(None));
+        }
+        //SAFETY: At this point the job is not null
+        Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
+    }
+
+    pub unsafe fn get_completed_job(&self) -> Result<MbJob, MbError> {
         // SAFETY: The pointer passed to get_completed_job is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let job = self.exec(|mgr_mut_ptr| unsafe {
@@ -81,10 +94,11 @@ impl MbMgr {
         if job.is_null() {
             return Ok(MbJob(None));
         }
+        //SAFETY: At this point the job is not null
         Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
     }
 
-    pub fn flush_job(&self) -> Result<MbJob, MbError> {
+    pub unsafe fn flush_job(&self) -> Result<MbJob, MbError> {
         // SAFETY: The pointer passed to flush_job is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let job =self.exec(|mgr_mut_ptr| unsafe {
@@ -94,6 +108,7 @@ impl MbMgr {
         if job.is_null() {
             return Ok(MbJob(None));
         }
+        //SAFETY: At this point the job is not null
         Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
     }
 
@@ -107,31 +122,33 @@ impl MbMgr {
         Ok(size)
     }
 
-}
-
-
-#[must_use = "Job must be completed"]
-pub struct MbJobGuard<'mgr, 'buf, 'out> {
-    job: NonNull<ImbJob>,
-    _manager: PhantomData<&'mgr ImbMgr>,
-    _input: PhantomData<&'buf [u8]>,
-    _output: PhantomData<&'out mut [u8]>,
-}
-
-impl<'mgr, 'buf, 'out> MbJobGuard<'mgr, 'buf, 'out> {
-    pub fn status(&self) -> Result<ImbStatus, MbError> {
-        // SAFETY: The job is not Option::None, if it is null, the user should not be calling this function
-        let status = unsafe { (*self.job.as_ptr()).status };
-        Ok(status)
-    }
     
+
 }
 
-impl Drop for MbJobGuard<'_, '_, '_> {
-    fn drop(&mut self) {
-        panic!(
-            "MbJobGuard dropped before completion!\n\
-             This would cause use-after-free. You must call try_complete() or wait_complete()."
-        );
-    }
-}
+
+// #[must_use = "Job must be completed"]
+// pub struct MbJobGuard<'mgr, 'buf, 'out> {
+//     job: NonNull<ImbJob>,
+//     _manager: PhantomData<&'mgr ImbMgr>,
+//     _input: PhantomData<&'buf [u8]>,
+//     _output: PhantomData<&'out mut [u8]>,
+// }
+
+// impl<'mgr, 'buf, 'out> MbJobGuard<'mgr, 'buf, 'out> {
+//     pub fn status(&self) -> Result<ImbStatus, MbError> {
+//         // SAFETY: The job is not Option::None, if it is null, the user should not be calling this function
+//         let status = unsafe { (*self.job.as_ptr()).status };
+//         Ok(status)
+//     }
+    
+// }
+
+// impl Drop for MbJobGuard<'_, '_, '_> {
+//     fn drop(&mut self) {
+//         panic!(
+//             "MbJobGuard dropped before completion!\n\
+//              This would cause use-after-free. You must call try_complete() or wait_complete()."
+//         );
+//     }
+// }
