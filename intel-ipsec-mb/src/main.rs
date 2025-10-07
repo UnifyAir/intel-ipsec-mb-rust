@@ -321,99 +321,243 @@
 // //     println!("Outputs before flush: {:?}, {:?}", output1, output2);
 // // }
 
+// use intel_ipsec_mb::mgr::MbMgr;
+
+// fn main() {
+//     let mgr = MbMgr::new().unwrap();
+
+//     // Test the direct API first
+//     let mut output = Vec::new();
+//     output.resize(20 as usize, 0);
+//     let _hash = mgr.sha1(
+//         &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+//         &mut output,
+//     );
+//     match _hash {
+//         Ok(_) => println!("Direct SHA1: {:?}\n", output),
+//         Err(e) => println!("Error: {:}", e),
+//     }
+
+//     unsafe {
+//         // Keep ALL output buffers alive
+//         let mut outputs: Vec<Vec<u8>> = Vec::new();
+
+//         println!("=== SUBMITTING 20 JOBS ===\n");
+
+//         for i in 0..20 {
+//             let mut job = mgr.get_next_job().unwrap();
+//             let mut output_buffer = vec![0u8; 20];
+
+//             mgr.fill_job_sha1(
+//                 &mut job,
+//                 &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+//                 &mut output_buffer,
+//             ).unwrap();
+
+//             outputs.push(output_buffer);
+
+//             let _completed = mgr.submit_job().unwrap();
+
+//             // Print status after each submit
+//             println!("After submit #{:2}:", i + 1);
+//             for (idx, out) in outputs.iter().enumerate() {
+//                 let is_filled = out.iter().any(|&b| b != 0);
+//                 print!("  Job {:2}: {}", idx + 1, if is_filled { "FILLED" } else { "empty " });
+//                 if (idx + 1) % 5 == 0 { println!(); }
+//             }
+//             if outputs.len() % 5 != 0 { println!(); }
+//             println!();
+//         }
+
+//         println!("\n=== AFTER ALL SUBMISSIONS (before flush) ===");
+//         for (i, out) in outputs.iter().enumerate() {
+//             let is_filled = out.iter().any(|&b| b != 0);
+//             println!("Job {:2}: {} - {:?}",
+//                 i + 1,
+//                 if is_filled { "FILLED" } else { "empty " },
+//                 if is_filled { &out[..] } else { &[0u8; 0][..] }
+//             );
+//         }
+
+//         println!("\n=== NOW CALLING FLUSH ===\n");
+
+//         let mut flush_count = 0;
+//         loop {
+//             match mgr.flush_job() {
+//                 Ok(job_result) => {
+//                     if job_result.0.is_none() {
+//                         println!("Flush returned None - all done");
+//                         break;
+//                     }
+//                     flush_count += 1;
+//                     println!("After flush call #{}:", flush_count);
+//                     for (idx, out) in outputs.iter().enumerate() {
+//                         let is_filled = out.iter().any(|&b| b != 0);
+//                         print!("  Job {:2}: {}", idx + 1, if is_filled { "FILLED" } else { "empty " });
+//                         if (idx + 1) % 5 == 0 { println!(); }
+//                     }
+//                     if outputs.len() % 5 != 0 { println!(); }
+//                     println!();
+//                 }
+//                 Err(e) => {
+//                     println!("Flush error: {}", e);
+//                     break;
+//                 }
+//             }
+//         }
+
+//         println!("\n=== FINAL RESULTS ===");
+//         for (i, out) in outputs.iter().enumerate() {
+//             let is_filled = out.iter().any(|&b| b != 0);
+//             println!("Job {:2}: {} - {:?}",
+//                 i + 1,
+//                 if is_filled { "FILLED" } else { "empty " },
+//                 out
+//             );
+//         }
+//     }
+// }
+
+// use intel_ipsec_mb::mgr::MbMgr;
+// use intel_ipsec_mb::hash::sha1::Sha1;
+
+// fn main() {
+//     let mgr = MbMgr::new().unwrap();
+//     let mut output: Vec<u8> = Vec::new();
+//     output.resize(20, 0);
+//     let input: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+
+//     let sha1 = Sha1 {
+//         buffer: &input,
+//         output: &mut output,
+//     };
+
+//     let _hash = mgr.handoff_job(sha1);
+
+//     // Try to drop input - THIS SHOULD FAIL TO COMPILE!
+//     // drop(input);  // ❌ ERROR: cannot move out of `input` because it is borrowed
+
+//     unsafe { mgr.flush_job().unwrap(); }
+//     drop(_hash);
+
+//     println!("Hash: {:?}", output);
+
+//     drop(input);
+// }
+
+use intel_ipsec_mb::hash::sha1::Operation;
+use intel_ipsec_mb::hash::sha1::Sha1;
 use intel_ipsec_mb::mgr::MbMgr;
+use std::pin::Pin;
+use std::task::RawWaker;
+use std::task::RawWakerVTable;
+use std::task::{Context, Poll, Waker};
+use std::mem;
+
+// Simple no-op waker for single-threaded polling
+// fn noop_waker() -> Waker {
+//     fn noop_clone(_: *const ()) -> RawWaker {
+//         noop_raw_waker()
+//     }
+//     fn noop(_: *const ()) {}
+
+//     fn noop_raw_waker() -> RawWaker {
+//         RawWaker::new(
+//             std::ptr::null(),
+//             &RawWakerVTable::new(noop_clone, noop, noop, noop),
+//         )
+//     }
+
+//     unsafe { Waker::from_raw(noop_raw_waker()) }
+// }
 
 fn main() {
     let mgr = MbMgr::new().unwrap();
-    
-    // Test the direct API first
-    let mut output = Vec::new();
-    output.resize(20 as usize, 0);
-    let _hash = mgr.sha1(
-        &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-        &mut output,
-    );
-    match _hash {
-        Ok(_) => println!("Direct SHA1: {:?}\n", output),
-        Err(e) => println!("Error: {:}", e),
-    }
+    let mut output: Vec<u8> = Vec::new();
+    output.resize(20, 0);
+    let mut output2: Vec<u8> = Vec::new();
+    output2.resize(20, 0);
+    let mut output3: Vec<u8> = Vec::new();
+    output3.resize(20, 0);
+    let mut output4: Vec<u8> = Vec::new();
+    output4.resize(20, 0);
+    let mut output5: Vec<u8> = Vec::new();
+    output5.resize(20, 0);
+    let mut output6: Vec<u8> = Vec::new();
+    output6.resize(20, 0);
+    let input: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+
+    let sha = Sha1 {
+        buffer: &input,
+        output: &mut output,
+    };
+
+    let sha2 = Sha1 {
+        buffer: &input,
+        output: &mut output2,
+    };
+
+    let sha3 = Sha1 {
+        buffer: &input,
+        output: &mut output3,
+    };
+
+    let sha4 = Sha1 {
+        buffer: &input,
+        output: &mut output4,
+    };
+
+    let sha5 = Sha1 {
+        buffer: &input,
+        output: &mut output5,
+    };
+
+    let sha6 = Sha1 {
+        buffer: &input,
+        output: &mut output6,
+    };
 
     unsafe {
-        // Keep ALL output buffers alive
-        let mut outputs: Vec<Vec<u8>> = Vec::new();
-        
-        println!("=== SUBMITTING 20 JOBS ===\n");
-        
-        for i in 0..20 {
-            let mut job = mgr.get_next_job().unwrap();
-            let mut output_buffer = vec![0u8; 20];
-            
-            mgr.fill_job_sha1(
-                &mut job,
-                &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-                &mut output_buffer,
-            ).unwrap();
-            
-            outputs.push(output_buffer);
-            
-            let _completed = mgr.submit_job().unwrap();
-            
-            // Print status after each submit
-            println!("After submit #{:2}:", i + 1);
-            for (idx, out) in outputs.iter().enumerate() {
-                let is_filled = out.iter().any(|&b| b != 0);
-                print!("  Job {:2}: {}", idx + 1, if is_filled { "FILLED" } else { "empty " });
-                if (idx + 1) % 5 == 0 { println!(); }
-            }
-            if outputs.len() % 5 != 0 { println!(); }
-            println!();
-        }
-        
-        println!("\n=== AFTER ALL SUBMISSIONS (before flush) ===");
-        for (i, out) in outputs.iter().enumerate() {
-            let is_filled = out.iter().any(|&b| b != 0);
-            println!("Job {:2}: {} - {:?}", 
-                i + 1, 
-                if is_filled { "FILLED" } else { "empty " },
-                if is_filled { &out[..] } else { &[0u8; 0][..] }
-            );
-        }
-        
-        println!("\n=== NOW CALLING FLUSH ===\n");
-        
-        let mut flush_count = 0;
-        loop {
-            match mgr.flush_job() {
-                Ok(job_result) => {
-                    if job_result.0.is_none() {
-                        println!("Flush returned None - all done");
-                        break;
-                    }
-                    flush_count += 1;
-                    println!("After flush call #{}:", flush_count);
-                    for (idx, out) in outputs.iter().enumerate() {
-                        let is_filled = out.iter().any(|&b| b != 0);
-                        print!("  Job {:2}: {}", idx + 1, if is_filled { "FILLED" } else { "empty " });
-                        if (idx + 1) % 5 == 0 { println!(); }
-                    }
-                    if outputs.len() % 5 != 0 { println!(); }
-                    println!();
-                }
-                Err(e) => {
-                    println!("Flush error: {}", e);
-                    break;
-                }
-            }
-        }
-        
-        println!("\n=== FINAL RESULTS ===");
-        for (i, out) in outputs.iter().enumerate() {
-            let is_filled = out.iter().any(|&b| b != 0);
-            println!("Job {:2}: {} - {:?}", 
-                i + 1, 
-                if is_filled { "FILLED" } else { "empty " },
-                out
-            );
-        }
+        let handle = mgr.handoff_job(sha).unwrap();
+        let handle2 = mgr.handoff_job(sha2).unwrap();
+        let handle3 = mgr.handoff_job(sha3).unwrap();
+        let handle4 = mgr.handoff_job(sha4).unwrap();
+        let handle5 = mgr.handoff_job(sha5).unwrap();
+        let handle6 = mgr.handoff_job(sha6).unwrap();
+        println!("Status: {:?}", handle.get_job_status().unwrap());
+        println!("Status: {:?}", handle2.get_job_status().unwrap());
+        println!("Status: {:?}", handle3.get_job_status().unwrap());
+        println!("Status: {:?}", handle4.get_job_status().unwrap());
+        println!("Status: {:?}", handle5.get_job_status().unwrap());
+        println!("Status: {:?}", handle6.get_job_status().unwrap());
+        mgr.flush_job().unwrap();
+        mgr.flush_job().unwrap();
+        mgr.flush_job().unwrap();
+        mgr.flush_job().unwrap();
+        mgr.flush_job().unwrap();
+        mgr.flush_job().unwrap();
+        mgr.flush_job().unwrap();
+        mgr.flush_job().unwrap();
+        mgr.flush_job().unwrap();
+        mgr.flush_job().unwrap();
+        mgr.flush_job().unwrap();
+        println!("Status: {:?}", handle.get_job_status().unwrap());
+        println!("Status: {:?}", handle2.get_job_status().unwrap());
+        println!("Status: {:?}", handle3.get_job_status().unwrap());
+        println!("Status: {:?}", handle4.get_job_status().unwrap());
+        println!("Status: {:?}", handle5.get_job_status().unwrap());
+        println!("Status: {:?}", handle6.get_job_status().unwrap());
+        handle.resolve().unwrap();
+        handle2.resolve().unwrap();
+        handle3.resolve().unwrap();
+        handle4.resolve().unwrap();
+        handle5.resolve().unwrap();
+        handle6.resolve().unwrap();
+        println!("Hash: {:?}", output);
+        println!("Hash: {:?}", output2);
+        println!("Hash: {:?}", output3);
+        println!("Hash: {:?}", output4);
+        println!("Hash: {:?}", output5);
+        println!("Hash: {:?}", output6);
     }
 }

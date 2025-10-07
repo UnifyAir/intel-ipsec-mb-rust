@@ -36,6 +36,7 @@ pub use bindings::IMB_JOB as ImbJob;
 pub use bindings::IMB_ERR as ImbErr;
 pub use bindings::IMB_ARCH as ImbArch;
 pub use bindings::IMB_STATUS as ImbStatus;
+pub use bindings::IMB_MAX_JOBS as ImbMaxJobs;
 
 
 #[cfg(test)]

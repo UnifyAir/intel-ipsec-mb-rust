@@ -125,6 +125,7 @@ pub enum MbMgrErrorKind {
 
     InvalidOutputSize,
     IllegalJobState,
+    NoJobAvailable,
     
     UnknownError(i32),
 }
@@ -191,6 +192,7 @@ impl MbMgrErrorKind {
             // Rust implementation errors (codes > 3000)
             MbMgrErrorKind::InvalidOutputSize => 3001,
             MbMgrErrorKind::IllegalJobState => 3002,
+            MbMgrErrorKind::NoJobAvailable => 3003,
 
             MbMgrErrorKind::UnknownError(code) => code,
         }
@@ -257,6 +259,7 @@ impl MbMgrErrorKind {
             // Rust implementation errors (codes > 3000)
             3001 => MbMgrErrorKind::InvalidOutputSize,
             3002 => MbMgrErrorKind::IllegalJobState,
+            3003 => MbMgrErrorKind::NoJobAvailable,
 
             _ => MbMgrErrorKind::UnknownError(code),
         }

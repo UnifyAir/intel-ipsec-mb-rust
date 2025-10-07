@@ -36,3 +36,8 @@ pub mod hash;
     // job: &mut MbJob,
     // buffer: impl AsRef<[u8]>,
     // mut output: impl AsMut<[u8]>,
+
+// Todo: reformat the whole everything is super messed up    
+//Todo: few days back I changed the MbMgr from "to_mut_ptr" and "to_ptr" to just "to_ptr" removed the
+// mut vairiant look out in the future was thre previous design was good
+//Todo: remove all unwraps and use proper error handling
