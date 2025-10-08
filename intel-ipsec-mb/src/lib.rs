@@ -6,7 +6,7 @@ pub mod job;
 pub mod runtime;
 pub mod job_ring;
 
-pub mod hash;
+pub mod operation;
 
 // pub enum Operations {
 //     Sha1((buffer: impl AsRef<[u8]>, output: impl AsMut<[u8]>)),

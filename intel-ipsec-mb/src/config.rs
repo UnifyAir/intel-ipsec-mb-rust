@@ -3,6 +3,27 @@ use intel_ipsec_mb_sys::ImbArch;
 use crate::mgr::MbMgr;
 use crate::error::MbError;
 
+
+#[derive(Debug, Clone)]
+pub struct MbRuntimeConfig {
+    quick_start: bool,
+}
+
+impl Default for MbRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            quick_start: false,
+        }
+    }
+}
+
+impl MbRuntimeConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+
 /// Configuration for Multi-Buffer Manager
 #[derive(Debug, Clone)]
 pub struct MbMgrConfig {

@@ -126,6 +126,9 @@ pub enum MbMgrErrorKind {
     InvalidOutputSize,
     IllegalJobState,
     NoJobAvailable,
+    ChannelClosed,
+    CompletionFailed,
+
     
     UnknownError(i32),
 }
@@ -193,6 +196,8 @@ impl MbMgrErrorKind {
             MbMgrErrorKind::InvalidOutputSize => 3001,
             MbMgrErrorKind::IllegalJobState => 3002,
             MbMgrErrorKind::NoJobAvailable => 3003,
+            MbMgrErrorKind::ChannelClosed => 3004,
+            MbMgrErrorKind::CompletionFailed => 3005,
 
             MbMgrErrorKind::UnknownError(code) => code,
         }
@@ -260,6 +265,8 @@ impl MbMgrErrorKind {
             3001 => MbMgrErrorKind::InvalidOutputSize,
             3002 => MbMgrErrorKind::IllegalJobState,
             3003 => MbMgrErrorKind::NoJobAvailable,
+            3004 => MbMgrErrorKind::ChannelClosed,
+            3005 => MbMgrErrorKind::CompletionFailed,
 
             _ => MbMgrErrorKind::UnknownError(code),
         }

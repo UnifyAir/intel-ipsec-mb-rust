@@ -3,11 +3,8 @@ use crate::job::MbJob;
 use crate::mgr::MbMgr;
 use intel_ipsec_mb_sys::*;
 use std::os::raw::c_void;
+use crate::operation::Operation;
 
-pub trait Operation<'anchor> 
-{
-    fn fill_job(&mut self, job: &MbJob) -> Result<&'anchor (), MbError>;
-}
 
 impl<'anchor, 'buf, 'out, B, O> Operation<'anchor> 
     for Sha1<'buf, 'out, B, O>
@@ -54,6 +51,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct Sha1<'buf, 'out, B: AsRef<[u8]> + ?Sized + 'buf, O: AsMut<[u8]> + ?Sized + 'out> {
     pub buffer: &'buf B,
     pub output: &'out mut O,

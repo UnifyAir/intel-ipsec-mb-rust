@@ -17,23 +17,13 @@ use std::marker::PhantomData;
 
 pub struct MbMgr {
     mgr: NonNull<ImbMgr>,
-    // pub(crate) outstanding_jobs: RefCell<HashMap<*const IMB_JOB, JobStatus>>,
-    // pub(crate) completed_jobs: RefCell<HashMap<*const IMB_JOB, JobStatus>>,
-    // pub(crate) wakers: RefCell<HashMap<*const IMB_JOB, Waker>>,
     _not_thread_safe: PhantomData<Rc<()>>,
 }
 
 impl MbMgr {
-    // For operations that don't mutate (reading state, etc.)
     pub fn as_ptr(&self) -> *mut ImbMgr {
         self.mgr.as_ptr()
     }
-
-    // Temporary disabled as we are not using it, it was there for
-    // safety, but it is not needed
-    // pub fn as_mut_ptr(&mut self) -> *mut ImbMgr {
-    //     self.mgr.as_ptr()
-    // }
 }
 
 //Todo fix this
@@ -54,13 +44,6 @@ impl fmt::Debug for MbMgr {
 
 impl Drop for MbMgr {
     fn drop(&mut self) {
-        // Todo: can we tackle this with lifetime..., such that jobhandle should not outlive the manager
-        // if !self.outstanding_jobs.borrow().is_empty() {
-        //     panic!(
-        //         "ImbMgr dropped with {} outstanding jobs!",
-        //         self.outstanding_jobs.borrow().len()
-        //     );
-        // }
         unsafe {
             free_mb_mgr(self.mgr.as_ptr());
         }
@@ -83,9 +66,6 @@ impl MbMgr {
             let mgr = NonNull::new_unchecked(mgr);
             let mut manager = Self {
                 mgr,
-                // outstanding_jobs: RefCell::new(HashMap::new()),
-                // completed_jobs: RefCell::new(HashMap::new()),
-                // wakers: RefCell::new(HashMap::new()),
                 _not_thread_safe: PhantomData,
             };
 
