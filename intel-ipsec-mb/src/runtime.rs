@@ -14,7 +14,7 @@ use crate::operation::Operation;
 #[derive(Debug)]
 pub struct MbRuntime {
     mgr: MbMgr,
-    job_rx: mpsc::Receiver<MbJobRequest>, // Receive from other threads
+    job_rx: mpsc::Receiver<MbJobRequest>, 
     job_queue: VecDeque<MbJobRequest>,
     _not_thread_safe: PhantomData<Rc<()>>,
 }
@@ -25,7 +25,6 @@ pub struct MbRuntimeHandle {
     job_tx: mpsc::Sender<MbJobRequest>,
 }
 
-/// Uninitialized runtime - Send + Sync (can be moved to worker thread)
 #[derive(Debug)]
 pub struct MbRuntimeInit {
     job_rx: mpsc::Receiver<MbJobRequest>,
@@ -48,37 +47,20 @@ impl std::fmt::Debug for MbJobRequest {
 }
 
 impl MbRuntime {
-    fn run_loop(&mut self) {
+    fn run_loop(&mut self) -> Result<(), MbError> {
         loop {
             let job_request = self.job_rx.recv();
             match job_request {
                 Ok(mb_job_request) => {
-                    // while let Ok(job) = self.job_rx.try_recv() {
-                    //     self.job_queue.push_back(job);
-                    //     if self.job_queue.len() >= 64 {
-                    //         break;
-                    //     }
-                    // }
-
-                    // self.process_batch();
-                    self.process_job(mb_job_request);
-
-                   
+                    self.process_job(mb_job_request)?;
                 }
-                Err(_) => break,
+                Err(_) => return Err(MbError::from_kind(MbMgrErrorKind::ChannelClosed)),
             }
         }
     }
 
-    // fn process_batch(&mut self) {
-    //     while let Some(job) = self.job_queue.pop_front() {
-    //         let status = self.process_job(job.operation);
-    //         let _ = job.completion.send(status);
-    //     }
-    // }
-
-    fn process_job(&mut self, mut job_request: MbJobRequest) {
-        let (handle, did_last_job_finish) = self.mgr.handoff_job(&mut *job_request.operation).unwrap();
+    fn process_job(&mut self, mut job_request: MbJobRequest) -> Result<(), MbError> {
+        let (handle, did_last_job_finish) = self.mgr.handoff_job(&mut *job_request.operation)?;
         job_request.handle = Some(handle);
         self.job_queue.push_back(job_request);
 
@@ -89,19 +71,21 @@ impl MbRuntime {
         }
 
         if self.should_flush() {
-            self.flush();
+            self.flush()?;
         }
   
+        Ok(())
     }
 
     fn should_flush(&self) -> bool {
         false 
     }
 
-    fn flush(&mut self) {
+    fn flush(&mut self) -> Result<(), MbError> {
         unsafe {
-            self.mgr.flush_job().unwrap();
+            self.mgr.flush_job()?;
         }
+        Ok(())
     }
 }
 
@@ -111,13 +95,12 @@ impl MbRuntimeHandle {
     ///
     /// This method blocks until the job completes, ensuring that any
     /// borrowed data in the operation remains valid throughout execution.
-    pub fn submit_job<'scope>(
+    pub fn publish_job<'scope>(
         &self,
         operation: impl Operation<'scope> + Send + 'scope,
     ) -> Result<JobStatus, MbError> {
         let (completion_tx, completion_rx) = mpsc::sync_channel(1);
 
-        // Box the operation with its actual lifetime
         let boxed: Box<dyn Operation<'scope> + Send + 'scope> = Box::new(operation);
 
         // Transmute to 'static for storage
@@ -145,13 +128,9 @@ impl MbRuntimeHandle {
 }
 
 impl MbRuntimeInit {
-    /// Initialize MbMgr on the current thread and start processing
-    /// This consumes self and creates the !Send runtime
-    pub fn run(self) {
-        // Initialize MbMgr HERE, on the worker thread
-        let mgr = MbMgr::new().expect("Failed to initialize MbMgr");
+    pub fn run(self) -> Result<(), MbError> {
+        let mgr = MbMgr::new()?;
 
-        // Now create the actual runtime (which is !Send)
         let mut runtime = MbRuntime {
             mgr,
             job_rx: self.job_rx,
@@ -159,12 +138,11 @@ impl MbRuntimeInit {
             _not_thread_safe: PhantomData,
         };
 
-        // Run the processing loop
-        runtime.run_loop();
+        runtime.run_loop()?;
+        Ok(())
     }
 }
 
-/// Create and spawn runtime
 pub fn spawn_runtime() -> MbRuntimeHandle {
     spawn_runtime_with_capacity(128)
 }
@@ -174,9 +152,8 @@ pub fn spawn_runtime_with_capacity(capacity: usize) -> MbRuntimeHandle {
 
     let init = MbRuntimeInit { job_rx, capacity };
 
-    // Move the uninitialized runtime to worker thread
     let join_handle = std::thread::spawn(move || {
-        init.run(); // ✓ Works! MbRuntimeInit is Send
+        init.run().map_err(|_| MbError::from_kind(MbMgrErrorKind::RuntimeError)).unwrap();
     });
 
     MbRuntimeHandle { job_tx, join_handle: join_handle }

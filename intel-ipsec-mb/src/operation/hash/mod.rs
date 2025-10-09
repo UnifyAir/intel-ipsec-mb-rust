@@ -1,3 +1,4 @@
-pub mod sha1;
+pub mod sha;
+pub mod md;
 
 

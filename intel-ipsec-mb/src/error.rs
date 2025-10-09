@@ -129,6 +129,7 @@ pub enum MbMgrErrorKind {
     ChannelClosed,
     CompletionFailed,
 
+    RuntimeError,
     
     UnknownError(i32),
 }
@@ -199,6 +200,8 @@ impl MbMgrErrorKind {
             MbMgrErrorKind::ChannelClosed => 3004,
             MbMgrErrorKind::CompletionFailed => 3005,
 
+            MbMgrErrorKind::RuntimeError => 3006,
+
             MbMgrErrorKind::UnknownError(code) => code,
         }
     }
@@ -267,6 +270,8 @@ impl MbMgrErrorKind {
             3003 => MbMgrErrorKind::NoJobAvailable,
             3004 => MbMgrErrorKind::ChannelClosed,
             3005 => MbMgrErrorKind::CompletionFailed,
+
+            3006 => MbMgrErrorKind::RuntimeError,
 
             _ => MbMgrErrorKind::UnknownError(code),
         }

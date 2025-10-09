@@ -907,7 +907,7 @@
 use intel_ipsec_mb::runtime::spawn_runtime;
 use std::thread;
 use std::sync::Arc;
-use intel_ipsec_mb::operation::hash::sha1::Sha1;
+use intel_ipsec_mb::operation::hash::sha::{Sha1, Sha1OneBlock};
 
 fn main() {
     println!("Starting MB Runtime...");
@@ -936,13 +936,13 @@ fn main() {
             let mut output = vec![0u8; 20];
             
             // Create SHA-1 operation
-            let sha = Sha1 {
+            let sha = Sha1OneBlock {
                 buffer: &input,
                 output: &mut output,
             };
             
             // Submit job and wait for completion
-            match handle.submit_job(sha) {
+            match handle.publish_job(sha) {
                 Ok(status) => {
                     println!("Thread {}: Status = {:?}", thread_id, status);
                     println!("Thread {}: Hash = {:?}", thread_id, output);
