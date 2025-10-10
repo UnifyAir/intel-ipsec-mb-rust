@@ -25,3 +25,10 @@
 //Todo: few days back I changed the MbMgr from "to_mut_ptr" and "to_ptr" to just "to_ptr" removed the
 // mut vairiant look out in the future was thre previous design was good
 //Todo: remove all unwraps and use proper error handling
+/**
+* get_next_job returns a job object. This must be filled in and returned
+* via submit_job before get_next_job is called again.
+* After submit_job is called, one should call get_completed_job() at least
+* once (and preferably until it returns NULL).
+* get_completed_job and flush_job returns a job object. This job object ceases to be usable at the next call to get_next_job 
+*/
