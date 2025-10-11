@@ -171,7 +171,6 @@ The build system automatically configures CMake with:
 | x86_64 | Windows | 🚧 In Progress |
 | x86_64 | macOS | 🚧 In Progress |
 | x86 | Linux | ✅ Supported |
-| aarch64 | Linux | ✅ Supported |
 
 ## Performance
 
