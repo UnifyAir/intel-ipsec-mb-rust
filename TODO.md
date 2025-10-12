@@ -32,3 +32,5 @@
 * once (and preferably until it returns NULL).
 * get_completed_job and flush_job returns a job object. This job object ceases to be usable at the next call to get_next_job 
 */
+
+//Todo: Use std::ffi::c_void eveywhere

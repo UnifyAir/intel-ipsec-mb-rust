@@ -4,7 +4,6 @@ use crate::mgr::MbMgr;
 use intel_ipsec_mb_sys::*;
 use std::os::raw::c_void;
 use crate::operation::Operation;
-
 #[derive(Debug)]
 pub struct Sha1<'buf, 'out, B: AsRef<[u8]> + ?Sized + 'buf, O: AsMut<[u8]> + ?Sized + 'out> {
     pub buffer: &'buf B,
@@ -19,7 +18,7 @@ where
     B: AsRef<[u8]> + ?Sized + 'buf,
     O: AsMut<[u8]> + ?Sized + 'out,
 {
-    fn fill_job(&mut self, job: &MbJob) -> Result<&'anchor (), MbError> {
+    fn fill_job(&mut self, job: &MbJob, _mgr: &MbMgr) -> Result<&'anchor (), MbError> {
         let buffer_slice = self.buffer.as_ref();
         let output_slice = self.output.as_mut();
         
@@ -34,18 +33,18 @@ where
         // the returned job pointer or filling the job may result in undefined behavior.
         let imb_job = unsafe {&mut *job.as_ptr() };
         
-        imb_job.hash_alg = IMB_HASH_ALG_IMB_AUTH_SHA_1;
+        imb_job.hash_alg = ImbHashAlg::IMB_AUTH_SHA_1;
         imb_job.__bindgen_anon_1.src = buffer_slice.as_ptr();
         imb_job.hash_start_src_offset_in_bytes = 0;
         imb_job.__bindgen_anon_5.msg_len_to_hash_in_bytes = buffer_slice.len() as u64;
         imb_job.auth_tag_output = output_slice.as_mut_ptr();
         imb_job.auth_tag_output_len_in_bytes = IMB_SHA1_DIGEST_SIZE_IN_BYTES as u64;
-        imb_job.chain_order = IMB_CHAIN_ORDER_IMB_ORDER_HASH_CIPHER;
-        imb_job.cipher_mode = IMB_CIPHER_MODE_IMB_CIPHER_NULL;
+        imb_job.chain_order = ImbChainOrder::IMB_ORDER_HASH_CIPHER;
+        imb_job.cipher_mode = ImbCipherMode::IMB_CIPHER_NULL;
         imb_job.__bindgen_anon_4.msg_len_to_cipher_in_bytes = 0;
         imb_job.__bindgen_anon_3.cipher_start_src_offset_in_bytes = 0;
         imb_job.__bindgen_anon_2.dst = buffer_slice.as_ptr() as *mut u8;
-        imb_job.cipher_direction = IMB_CIPHER_DIRECTION_IMB_DIR_ENCRYPT;
+        imb_job.cipher_direction = ImbCipherDirection::IMB_DIR_ENCRYPT;
         imb_job.enc_keys = std::ptr::null();
         imb_job.dec_keys = std::ptr::null();
         imb_job.key_len_in_bytes = 0;
@@ -70,7 +69,7 @@ where
     B: AsRef<[u8]> + ?Sized + 'buf,
     O: AsMut<[u8]> + ?Sized + 'out,
 {
-    fn fill_job(&mut self, job: &MbJob) -> Result<&'anchor (), MbError> {
+    fn fill_job(&mut self, job: &MbJob, _mgr: &MbMgr) -> Result<&'anchor (), MbError> {
         let buffer_slice = self.buffer.as_ref();
         let output_slice = self.output.as_mut();
         
@@ -85,18 +84,18 @@ where
         // the returned job pointer or filling the job may result in undefined behavior.
         let imb_job = unsafe {&mut *job.as_ptr() };
         
-        imb_job.hash_alg = IMB_HASH_ALG_IMB_AUTH_SHA_1;
+        imb_job.hash_alg = ImbHashAlg::IMB_AUTH_SHA_1;
         imb_job.__bindgen_anon_1.src = buffer_slice.as_ptr();
         imb_job.hash_start_src_offset_in_bytes = 0;
         imb_job.__bindgen_anon_5.msg_len_to_hash_in_bytes = 64u64;
         imb_job.auth_tag_output = output_slice.as_mut_ptr();
         imb_job.auth_tag_output_len_in_bytes = IMB_SHA1_DIGEST_SIZE_IN_BYTES as u64;
-        imb_job.chain_order = IMB_CHAIN_ORDER_IMB_ORDER_HASH_CIPHER;
-        imb_job.cipher_mode = IMB_CIPHER_MODE_IMB_CIPHER_NULL;
+        imb_job.chain_order = ImbChainOrder::IMB_ORDER_HASH_CIPHER;
+        imb_job.cipher_mode = ImbCipherMode::IMB_CIPHER_NULL;
         imb_job.__bindgen_anon_4.msg_len_to_cipher_in_bytes = 0;
         imb_job.__bindgen_anon_3.cipher_start_src_offset_in_bytes = 0;
         imb_job.__bindgen_anon_2.dst = buffer_slice.as_ptr() as *mut u8;
-        imb_job.cipher_direction = IMB_CIPHER_DIRECTION_IMB_DIR_ENCRYPT;
+        imb_job.cipher_direction = ImbCipherDirection::IMB_DIR_ENCRYPT;
         imb_job.enc_keys = std::ptr::null();
         imb_job.dec_keys = std::ptr::null();
         imb_job.key_len_in_bytes = 0;

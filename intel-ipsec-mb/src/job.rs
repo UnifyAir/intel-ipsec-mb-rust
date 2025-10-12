@@ -163,7 +163,7 @@ impl MbMgr {
         //    dropping the returned reference to complete the job lifecycle
         // let job_ref: &'anchor MbJob = unsafe { std::mem::transmute::<&MbJob, &'anchor MbJob>(&job) };
 
-        operation.fill_job(&job)?;
+        operation.fill_job(&job, &self)?;
 
         let completed_job = unsafe { self.submit_job()? };
         let is_previous_job_finished = completed_job.0.is_some();

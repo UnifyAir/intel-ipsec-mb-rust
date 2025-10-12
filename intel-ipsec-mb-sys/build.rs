@@ -217,6 +217,10 @@ fn generate_bindings(ipsec_mb_dir: &Path, out_dir: &Path) {
         .rustified_non_exhaustive_enum("IMB_ERR")
         .rustified_non_exhaustive_enum("IMB_ARCH")
         .rustified_non_exhaustive_enum("IMB_STATUS")
+        .rustified_non_exhaustive_enum("IMB_CIPHER_DIRECTION")
+        .rustified_non_exhaustive_enum("IMB_CIPHER_MODE")
+        .rustified_non_exhaustive_enum("IMB_HASH_ALG")
+        .rustified_non_exhaustive_enum("IMB_CHAIN_ORDER")
 
         // Formatting and generation options
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))

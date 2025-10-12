@@ -128,6 +128,7 @@ pub enum MbMgrErrorKind {
     NoJobAvailable,
     ChannelClosed,
     CompletionFailed,
+    InvalidParams,
 
     RuntimeError,
     
@@ -199,8 +200,9 @@ impl MbMgrErrorKind {
             MbMgrErrorKind::NoJobAvailable => 3003,
             MbMgrErrorKind::ChannelClosed => 3004,
             MbMgrErrorKind::CompletionFailed => 3005,
+            MbMgrErrorKind::InvalidParams => 3006,
 
-            MbMgrErrorKind::RuntimeError => 3006,
+            MbMgrErrorKind::RuntimeError => 3007,
 
             MbMgrErrorKind::UnknownError(code) => code,
         }
@@ -270,8 +272,9 @@ impl MbMgrErrorKind {
             3003 => MbMgrErrorKind::NoJobAvailable,
             3004 => MbMgrErrorKind::ChannelClosed,
             3005 => MbMgrErrorKind::CompletionFailed,
+            3006 => MbMgrErrorKind::InvalidParams,
 
-            3006 => MbMgrErrorKind::RuntimeError,
+            3007 => MbMgrErrorKind::RuntimeError,
 
             _ => MbMgrErrorKind::UnknownError(code),
         }

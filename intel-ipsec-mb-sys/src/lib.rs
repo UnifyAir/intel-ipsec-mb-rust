@@ -37,6 +37,13 @@ pub use bindings::IMB_ERR as ImbErr;
 pub use bindings::IMB_ARCH as ImbArch;
 pub use bindings::IMB_STATUS as ImbStatus;
 pub use bindings::IMB_MAX_JOBS as ImbMaxJobs;
+pub use bindings::IMB_CIPHER_DIRECTION as ImbCipherDirection;
+pub use bindings::IMB_HASH_ALG as ImbHashAlg;
+pub use bindings::IMB_CIPHER_MODE as ImbCipherMode;
+pub use bindings::IMB_CHAIN_ORDER as ImbChainOrder;
+
+
+pub use bindings::snow3g_key_schedule_t as Snow3gKeySchedule;
 
 
 #[cfg(test)]
