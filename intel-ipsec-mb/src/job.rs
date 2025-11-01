@@ -1,19 +1,17 @@
 use crate::error::MbError;
 use crate::error::MbMgrErrorKind;
 use crate::mgr::MbMgr;
+use crate::operation::Operation;
 use intel_ipsec_mb_sys::ImbJob;
 use intel_ipsec_mb_sys::ImbMgr;
 use intel_ipsec_mb_sys::ImbStatus;
-use std::mem;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::mem;
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::task::Context;
 use std::task::Poll;
-use crate::operation::Operation;
-
-// Todo: remove this non null as soon as possible, MbJob will be null when return via get_completed_job or submit_job
 
 #[derive(Eq, Hash, PartialEq)]
 pub struct MbJob(pub Option<NonNull<ImbJob>>);
@@ -40,7 +38,9 @@ impl<'anchor> MbJobHandle<'anchor> {
 
 impl<'anchor> Drop for MbJobHandle<'anchor> {
     fn drop(&mut self) {
-        panic!("Undefined behaviour: MbJobHandle was dropped before being properly completed! Dropping an unresolved JobHandle will cause undefined behaviour. You must consume a JobHandle by calling its completion methods (e.g., wait, complete, or poll).");
+        panic!(
+            "Undefined behaviour: MbJobHandle was dropped before being properly completed! Dropping an unresolved JobHandle will cause undefined behaviour. You must consume a JobHandle by calling its completion methods (e.g., wait, complete, or poll)."
+        );
     }
 }
 
@@ -49,9 +49,8 @@ pub struct JobStatus {
     pub status: ImbStatus,
 }
 
-
 impl MbJob {
-      pub fn as_ptr(&self) -> *mut ImbJob {
+    pub fn as_ptr(&self) -> *mut ImbJob {
         // SAFETY: as_ptr should only be called when the job is not null,
         // if the user is calling this on None, it will panic
         self.0.unwrap().as_ptr()
@@ -59,7 +58,7 @@ impl MbJob {
 }
 
 impl MbMgr {
-        pub unsafe fn get_next_job(&self) -> Result<MbJob, MbError> {
+    pub unsafe fn get_next_job(&self) -> Result<MbJob, MbError> {
         // SAFETY: The pointer passed to get_next_job is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let job = self.exec(|mgr_mut_ptr| unsafe {
@@ -142,39 +141,70 @@ impl MbMgr {
     pub fn handoff_job<'anchor, T>(
         &self,
         operation: &mut T,
-    ) -> Result<(MbJobHandle<'anchor>, bool), MbError>
+    ) -> Result<(MbJobHandle<'anchor>, usize), MbError>
     where
         T: Operation<'anchor> + ?Sized,
     {
+         // SAFETY CHECK: Prevent UB from reused job pointers
+         if self.undrained_completion_count.get() > 0 {
+            return Err(MbError::from_kind(
+                MbMgrErrorKind::UndrainedCompletions
+            ));
+        }
+
         let job = unsafe { self.get_next_job()? };
-        // Todo: use some queue function from intel ipsec library, or think about it.
+
         if job.0.is_none() {
             return Err(MbError::from_kind(MbMgrErrorKind::NoJobAvailable));
         }
 
-        // SAFETY: We're extending the lifetime of the job reference to 'anchor.
-        // This is safe because:
-        // 1. The underlying C pointer from IMB_GET_NEXT_JOB remains valid until
-        //    the job is submitted/flushed or the manager is destroyed
-        // 2. The Operation<'anchor> trait bound ensures that input buffers ('buf: 'anchor)
-        //    and output buffers ('out: 'anchor) remain valid for the 'anchor lifetime
-        // 3. We leak the MbJob wrapper (via mem::forget) so its Drop doesn't run
-        // 4. The caller MUST ensure they call flush_job() or submit_job() before
-        //    dropping the returned reference to complete the job lifecycle
-        // let job_ref: &'anchor MbJob = unsafe { std::mem::transmute::<&MbJob, &'anchor MbJob>(&job) };
-
         operation.fill_job(&job, &self)?;
+        let completed_from_submit = unsafe { self.submit_job()? };
 
-        let completed_job = unsafe { self.submit_job()? };
-        let is_previous_job_finished = completed_job.0.is_some();
+        let mut completion_count = 0;
 
-        // Leak the job wrapper so it's not dropped
-        // The underlying C pointer is managed by the Intel IPSec library
-        // mem::forget(job);
-        Ok((MbJobHandle {
-            job_id: job.0.unwrap().as_ptr() as *const ImbJob,
-            _anchor: PhantomData,
-        }, is_previous_job_finished))
+        if completed_from_submit.0.is_some() {
+            completion_count += 1;
+        }
+
+        // Drain get_completed_job (required by C API)
+        loop {
+            match unsafe { self.get_completed_job()? }.0 {
+                Some(_) => completion_count += 1,
+                None => break,
+            }
+        }
+
+        // Store count for safety check
+        if completion_count > 0 {
+            self.undrained_completion_count.set(completion_count);
+        }
+
+        Ok((
+            MbJobHandle {
+                job_id: job.0.unwrap().as_ptr() as *const ImbJob,
+                _anchor: PhantomData,
+            },
+            completion_count,
+        ))
     }
 
+    pub fn force_completion(&self) -> Result<usize, MbError> {
+        let mut completion_count = 0;
+        
+        // Just loop flush_job until NULL
+        loop {
+            match unsafe { self.flush_job()? }.0 {
+                Some(_) => completion_count += 1,
+                None => break,  // No more jobs to flush
+            }
+        }
+        
+        // Mark that completions need handling if any completed
+        if completion_count > 0 {
+            self.undrained_completion_count.set(completion_count);
+        }
+        
+        Ok(completion_count)
+    }
 }

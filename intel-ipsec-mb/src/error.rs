@@ -131,7 +131,8 @@ pub enum MbMgrErrorKind {
     InvalidParams,
 
     RuntimeError,
-    
+    UndrainedCompletions,
+
     UnknownError(i32),
 }
 
@@ -203,6 +204,7 @@ impl MbMgrErrorKind {
             MbMgrErrorKind::InvalidParams => 3006,
 
             MbMgrErrorKind::RuntimeError => 3007,
+            MbMgrErrorKind::UndrainedCompletions => 3008,
 
             MbMgrErrorKind::UnknownError(code) => code,
         }
@@ -275,6 +277,7 @@ impl MbMgrErrorKind {
             3006 => MbMgrErrorKind::InvalidParams,
 
             3007 => MbMgrErrorKind::RuntimeError,
+            3008 => MbMgrErrorKind::UndrainedCompletions,
 
             _ => MbMgrErrorKind::UnknownError(code),
         }

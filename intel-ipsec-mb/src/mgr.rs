@@ -12,11 +12,13 @@ use intel_ipsec_mb_sys::ImbStatus;
 use intel_ipsec_mb_sys::IMB_JOB;
 use std::rc::Rc;
 use std::array;
+use std::cell::Cell;
 
 use std::marker::PhantomData;
 
 pub struct MbMgr {
     mgr: NonNull<ImbMgr>,
+    pub(crate) undrained_completion_count: Cell<usize>,
     _not_thread_safe: PhantomData<Rc<()>>,
 }
 
@@ -55,6 +57,18 @@ impl MbMgr {
         Self::with_config(MbMgrConfig::default())
     }
 
+    /// Acknowledge that completed jobs have been handled
+    /// 
+    /// MUST be called after handling completions returned by handoff_job, handoff_job_batch
+    /// before calling handoff_job, handoff_job_batch again, otherwise handoff_job, handoff_job_batch will error.
+    pub fn ack_completions(&self) {
+        self.undrained_completion_count.set(0);
+    }
+
+    pub fn undrained_completion_count(&self) -> usize {
+        self.undrained_completion_count.get()
+    }
+
     pub fn with_config(config: MbMgrConfig) -> Result<Self, MbError> {
         unsafe {
             let mgr = alloc_mb_mgr(config.to_flags());
@@ -66,6 +80,7 @@ impl MbMgr {
             let mgr = NonNull::new_unchecked(mgr);
             let mut manager = Self {
                 mgr,
+                undrained_completion_count: Cell::new(0),
                 _not_thread_safe: PhantomData,
             };
 

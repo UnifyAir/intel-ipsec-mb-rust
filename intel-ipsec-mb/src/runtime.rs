@@ -64,7 +64,7 @@ impl MbRuntime {
         job_request.handle = Some(handle);
         self.job_queue.push_back(job_request);
 
-        if did_last_job_finish {
+        if did_last_job_finish == 0 {
             let prev_job_request = self.job_queue.pop_front().unwrap();
             prev_job_request.handle.unwrap().resolve().unwrap();
             prev_job_request.completion.send(JobStatus{status: ImbStatus::IMB_STATUS_COMPLETED}).unwrap();

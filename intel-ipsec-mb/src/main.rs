@@ -418,32 +418,31 @@
 // //     }
 // // }
 
-// // use intel_ipsec_mb::mgr::MbMgr;
-// // use intel_ipsec_mb::hash::sha1::Sha1;
+use intel_ipsec_mb::mgr::MbMgr;
+use intel_ipsec_mb::operation::hash::sha::Sha1;
+fn main() {
+    let mgr = MbMgr::new().unwrap();
+    let mut output: Vec<u8> = Vec::new();
+    output.resize(20, 0);
+    let input: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
-// // fn main() {
-// //     let mgr = MbMgr::new().unwrap();
-// //     let mut output: Vec<u8> = Vec::new();
-// //     output.resize(20, 0);
-// //     let input: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    let mut sha1 = Sha1 {
+        buffer: &input,
+        output: &mut output,
+    };
 
-// //     let sha1 = Sha1 {
-// //         buffer: &input,
-// //         output: &mut output,
-// //     };
+    let _hash = mgr.handoff_job(&mut sha1);
 
-// //     let _hash = mgr.handoff_job(sha1);
+    // Try to drop input - THIS SHOULD FAIL TO COMPILE!
+    // drop(input);  // ❌ ERROR: cannot move out of `input` because it is borrowed
 
-// //     // Try to drop input - THIS SHOULD FAIL TO COMPILE!
-// //     // drop(input);  // ❌ ERROR: cannot move out of `input` because it is borrowed
+    unsafe { mgr.flush_job().unwrap(); }
+    _hash.unwrap().0.resolve().unwrap();
 
-// //     unsafe { mgr.flush_job().unwrap(); }
-// //     drop(_hash);
+    println!("Hash: {:?}", output);
 
-// //     println!("Hash: {:?}", output);
-
-// //     drop(input);
-// // }
+    drop(input);
+}
 
 // // use intel_ipsec_mb::hash::sha1::Operation;
 // // use intel_ipsec_mb::hash::sha1::Sha1;
@@ -904,74 +903,80 @@
 // }
 
 
-use intel_ipsec_mb::runtime::spawn_runtime;
-use std::thread;
-use std::sync::Arc;
-use intel_ipsec_mb::operation::hash::sha::{Sha1, Sha1OneBlock};
 
-fn main() {
-    println!("Starting MB Runtime...");
-    
-    // Spawn the runtime thread
-    let handle = spawn_runtime();
-    let handle = Arc::new(handle);
-    
-    println!("Creating 10 worker threads...");
-    
-    let mut thread_handles = vec![];
-    
-    // Spawn 10 worker threads
-    for thread_id in 0..10 {
-        let handle = Arc::clone(&handle);
-        
-        let thread_handle = thread::spawn(move || {
-            println!("Thread {} started", thread_id);
-            
-            // Create input and output buffers
-            // let input: Vec<u8> = vec![
-                // 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
-            // ];
 
-            let input: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-            let mut output = vec![0u8; 20];
-            
-            // Create SHA-1 operation
-            let sha = Sha1OneBlock {
-                buffer: &input,
-                output: &mut output,
-            };
-            
-            // Submit job and wait for completion
-            match handle.publish_job(sha) {
-                Ok(status) => {
-                    println!("Thread {}: Status = {:?}", thread_id, status);
-                    println!("Thread {}: Hash = {:?}", thread_id, output);
-                }
-                Err(e) => {
-                    eprintln!("Thread {}: Error = {:?}", thread_id, e);
-                }
-            }
-            
-            println!("Thread {} finished", thread_id);
-        });
+
+// ===============================================
+//Async example
+
+// use intel_ipsec_mb::runtime::spawn_runtime;
+// use std::thread;
+// use std::sync::Arc;
+// use intel_ipsec_mb::operation::hash::sha::{Sha1, Sha1OneBlock};
+
+// fn main() {
+//     println!("Starting MB Runtime...");
+    
+//     // Spawn the runtime thread
+//     let handle = spawn_runtime();
+//     let handle = Arc::new(handle);
+    
+//     println!("Creating 10 worker threads...");
+    
+//     let mut thread_handles = vec![];
+    
+//     // Spawn 10 worker threads
+//     for thread_id in 0..10 {
+//         let handle = Arc::clone(&handle);
         
-        thread_handles.push(thread_handle);
-    }
+//         let thread_handle = thread::spawn(move || {
+//             println!("Thread {} started", thread_id);
+            
+//             // Create input and output buffers
+//             // let input: Vec<u8> = vec![
+//                 // 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+//             // ];
+
+//             let input: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+//             let mut output = vec![0u8; 20];
+            
+//             // Create SHA-1 operation
+//             let sha = Sha1OneBlock {
+//                 buffer: &input,
+//                 output: &mut output,
+//             };
+            
+//             // Submit job and wait for completion
+//             match handle.publish_job(sha) {
+//                 Ok(status) => {
+//                     println!("Thread {}: Status = {:?}", thread_id, status);
+//                     println!("Thread {}: Hash = {:?}", thread_id, output);
+//                 }
+//                 Err(e) => {
+//                     eprintln!("Thread {}: Error = {:?}", thread_id, e);
+//                 }
+//             }
+            
+//             println!("Thread {} finished", thread_id);
+//         });
+        
+//         thread_handles.push(thread_handle);
+//     }
     
-    println!("All worker threads spawned, waiting for completion...");
+//     println!("All worker threads spawned, waiting for completion...");
     
-    // Join all worker threads
-    for (i, handle) in thread_handles.into_iter().enumerate() {
-        handle.join().expect(&format!("Thread {} panicked", i));
-    }
+//     // Join all worker threads
+//     for (i, handle) in thread_handles.into_iter().enumerate() {
+//         handle.join().expect(&format!("Thread {} panicked", i));
+//     }
     
-    println!("All worker threads completed!");
+//     println!("All worker threads completed!");
     
-    // Drop the runtime handle to close the channel
-    drop(handle);
+//     // Drop the runtime handle to close the channel
+//     drop(handle);
     
-    // Wait a bit for runtime to exit gracefully
-    thread::sleep(std::time::Duration::from_millis(100));
+//     // Wait a bit for runtime to exit gracefully
+//     thread::sleep(std::time::Duration::from_millis(100));
     
-    println!("Test complete!");
-}
+//     println!("Test complete!");
+// }
