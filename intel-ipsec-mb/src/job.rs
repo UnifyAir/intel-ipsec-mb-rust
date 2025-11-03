@@ -5,6 +5,7 @@ use crate::operation::Operation;
 use intel_ipsec_mb_sys::ImbJob;
 use intel_ipsec_mb_sys::ImbMgr;
 use intel_ipsec_mb_sys::ImbStatus;
+use intel_ipsec_mb_sys::imb_set_session;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::mem;
@@ -13,7 +14,7 @@ use std::ptr::NonNull;
 use std::task::Context;
 use std::task::Poll;
 
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Eq, Hash, PartialEq)]
 pub struct MbJob(pub Option<NonNull<ImbJob>>);
 
 pub struct MbJobHandle<'anchor> {
@@ -37,7 +38,14 @@ impl<'anchor> MbJobHandle<'anchor> {
 }
 
 impl<'anchor> Drop for MbJobHandle<'anchor> {
+    // Prefer using the resolve method instead of dropping the job handle
+    // that will give the insight of the job flow inside the intel-ipsec-mb library
     fn drop(&mut self) {
+        if let Ok(job_status) = self.get_job_status() {
+            if job_status.status == ImbStatus::IMB_STATUS_COMPLETED {
+                return;
+            }
+        }
         panic!(
             "Undefined behaviour: MbJobHandle was dropped before being properly completed! Dropping an unresolved JobHandle will cause undefined behaviour. You must consume a JobHandle by calling its completion methods (e.g., wait, complete, or poll)."
         );
@@ -128,6 +136,109 @@ impl MbMgr {
         Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
     }
 
+    pub unsafe fn get_next_burst<const N: usize>(&self, jobs:&mut [MbJob; N]) -> Result<usize, MbError> {
+        let mut job_ptrs: [*mut ImbJob; N] = [std::ptr::null_mut(); N];
+
+        // SAFETY: The pointer passed to get_next_burst is assumed to be valid otherwise we
+        // would not be having a MbMgr instance
+        let num_jobs = self.exec(|mgr_mut_ptr| unsafe {
+            let get_next_burst_fn = (*mgr_mut_ptr).get_next_burst.unwrap();
+            get_next_burst_fn(mgr_mut_ptr, N as u32, job_ptrs.as_mut_ptr())
+        })?;
+
+        for i in 0..num_jobs as usize {
+            //SAFETY: At this point the jobs slice would be filled by c library
+            jobs[i] = MbJob(Some(unsafe { NonNull::new_unchecked(job_ptrs[i]) }));
+        }
+
+        Ok(num_jobs as usize)
+    }
+
+    pub unsafe fn submit_burst<const N: usize>(&self, jobs: &mut [MbJob; N], count: usize) -> Result<usize, MbError> {
+        let mut job_ptrs: [*mut ImbJob; N] = [std::ptr::null_mut(); N];
+        
+        for i in 0..count {
+            job_ptrs[i] = jobs[i].0.ok_or(MbError::from_kind(MbMgrErrorKind::NullJob))?.as_ptr();
+        }
+        
+        // SAFETY: The pointer passed to submit_burst is assumed to be valid otherwise we
+        // would not be having a MbMgr instance
+        let num_completed_jobs = self.exec(|mgr_mut_ptr| unsafe {
+            let submit_burst_fn = (*mgr_mut_ptr).submit_burst.unwrap();
+            submit_burst_fn(mgr_mut_ptr, count as u32, job_ptrs.as_mut_ptr())
+        })?;
+        
+        for i in 0..count {
+            jobs[i] = if i < num_completed_jobs as usize {
+                // SAFETY: C library fills job_ptrs[0..num_completed_jobs] with valid pointers
+                MbJob(Some(unsafe { NonNull::new_unchecked(job_ptrs[i]) }))
+            } else {
+                MbJob(None)
+            };
+        }
+        
+        Ok(num_completed_jobs as usize)
+    }
+
+    pub unsafe fn submit_burst_nocheck<const N: usize>(&self, jobs: &mut [MbJob; N], count: usize) -> Result<usize, MbError> {
+        let mut job_ptrs: [*mut ImbJob; N] = [std::ptr::null_mut(); N];
+        
+        for i in 0..count {
+            //SAFETY: At this point the called should have checked the job is not None
+            job_ptrs[i] = unsafe {jobs[i].0.unwrap_unchecked().as_ptr()};
+        }
+        
+        // SAFETY: The pointer passed to submit_burst is assumed to be valid otherwise we
+        // would not be having a MbMgr instance
+        let num_completed_jobs = self.exec(|mgr_mut_ptr| unsafe {
+            let submit_burst_nocheck_fn = (*mgr_mut_ptr).submit_burst_nocheck.unwrap();
+            submit_burst_nocheck_fn(mgr_mut_ptr, count as u32, job_ptrs.as_mut_ptr())
+        })?;
+        
+        for i in 0..count {
+            jobs[i] = if i < num_completed_jobs as usize {
+                // SAFETY: C library fills job_ptrs[0..num_completed_jobs] with valid pointers
+                MbJob(Some(unsafe { NonNull::new_unchecked(job_ptrs[i]) }))
+            } else {
+                MbJob(None)
+            };
+        }
+        
+        Ok(num_completed_jobs as usize)
+    }
+
+    pub unsafe fn flush_burst<const N: usize>(&self, jobs: &mut [MbJob; N], count: usize) -> Result<usize, MbError> {
+        let mut job_ptrs: [*mut ImbJob; N] = [std::ptr::null_mut(); N];
+    
+        // SAFETY: The pointer passed to flush_burst is assumed to be valid otherwise we
+        // would not be having a MbMgr instance
+        let num_flushed_jobs = self.exec(|mgr_mut_ptr| unsafe {
+            let flush_burst_fn = (*mgr_mut_ptr).flush_burst.unwrap();
+            flush_burst_fn(mgr_mut_ptr, count as u32, job_ptrs.as_mut_ptr())
+        })?;
+        
+        for i in 0..N {
+            jobs[i] = if i < num_flushed_jobs as usize {
+                // SAFETY: C library fills job_ptrs[0..num_flushed_jobs] with valid pointers
+                MbJob(Some(unsafe { NonNull::new_unchecked(job_ptrs[i]) }))
+            } else {
+                MbJob(None)
+            };
+        }
+        
+        Ok(num_flushed_jobs as usize)
+    }
+
+    pub fn set_session(&self, job: &MbJob) -> Result<u32, MbError> {
+        // SAFETY: The pointer passed to set_session is assumed to be valid otherwise we
+        // would not be having a MbMgr instance
+        let session_id = self.exec(|mgr_mut_ptr| unsafe {
+           imb_set_session(mgr_mut_ptr, job.as_ptr()) as u32
+        })?;
+
+        Ok(session_id)
+    }
+
     pub fn queue_size(&self) -> Result<u32, MbError> {
         // SAFETY: The pointer passed to queue_size is assumed to be valid otherwise we
         // would not be having a MbMgr instance
@@ -146,7 +257,7 @@ impl MbMgr {
         T: Operation<'anchor> + ?Sized,
     {
          // SAFETY CHECK: Prevent UB from reused job pointers
-         if self.undrained_completion_count.get() > 0 {
+         if self.get_undrained_completion_count() > 0 {
             return Err(MbError::from_kind(
                 MbMgrErrorKind::UndrainedCompletions
             ));
@@ -177,7 +288,7 @@ impl MbMgr {
 
         // Store count for safety check
         if completion_count > 0 {
-            self.undrained_completion_count.set(completion_count);
+            self.set_undrained_completion_count(completion_count);
         }
 
         Ok((
@@ -202,7 +313,7 @@ impl MbMgr {
         
         // Mark that completions need handling if any completed
         if completion_count > 0 {
-            self.undrained_completion_count.set(completion_count);
+            self.set_undrained_completion_count(completion_count);
         }
         
         Ok(completion_count)

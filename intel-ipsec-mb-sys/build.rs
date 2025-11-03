@@ -8,10 +8,7 @@ use std::{
 };
 
 // Supported target architectures
-const X86: &str = "x86";
 const X86_64: &str = "x86_64";
-const AARCH64: &str = "aarch64";
-
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
@@ -23,8 +20,8 @@ fn main() {
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
     
     // Only build for supported architectures
-    if !matches!(target_arch.as_str(), X86 | X86_64 | AARCH64) {
-        panic!("Intel IPSec-MB is only supported on x86, x86_64, and aarch64 architectures");
+    if !matches!(target_arch.as_str(), X86_64) {
+        panic!("Intel IPSec-MB is only supported on x86_64 architecture");
     }
 
     let ipsec_mb_dir = check_vendored_source();
@@ -91,7 +88,7 @@ fn build_ipsec_mb(
 
 fn cmake_build(
     ipsec_mb_dir: &Path,
-    target_arch: &str,
+    _target_arch: &str,
     _target_os: &str,
     out_dir: &Path,
 ) -> bool {
@@ -125,20 +122,6 @@ fn cmake_build(
     } else {
         // Disable SAFE_OPTIONS for release builds (override the default ON)
         cmake_cmd.arg("-DSAFE_OPTIONS=OFF");
-    }
-    
-    // Set architecture-specific options
-    match target_arch {
-        X86_64 => {
-            // CMake will auto-detect x86_64
-        }
-        X86 => {
-            cmake_cmd.arg("-DCMAKE_C_FLAGS=-m32");
-        }
-        AARCH64 => {
-            // CMake will auto-detect aarch64
-        }
-        _ => return false,
     }
     
     // Configure
