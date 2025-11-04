@@ -13,7 +13,7 @@
 - [ ] Fix function pointer handling throughout the codebase
 
 ## Platform Support
-- [ ] Add Windows and macOS library support
+- [ ] Think about adding Windows support (Extremely low priority)
 
 ## Performance & CPU Features
 - [ ] Add CPU-specific function calls based on cargo build flags (e.g., if `avx512f` is enabled, use the AVX512F function call)
