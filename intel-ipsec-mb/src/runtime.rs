@@ -11,6 +11,26 @@ use intel_ipsec_mb_sys::ImbStatus;
 use std::thread;
 use crate::operation::Operation;
 
+#[cfg(feature = "async")]
+use tokio::sync::oneshot;
+
+#[derive(Debug)]
+pub(crate) enum JobCompletion {
+    Sync(mpsc::SyncSender<JobStatus>),
+    #[cfg(feature = "async")]
+    Async(oneshot::Sender<JobStatus>),
+}
+
+impl JobCompletion {
+    fn send(self, status: JobStatus) -> Result<(), MbError> {
+        match self {
+            JobCompletion::Sync(tx) => tx.send(status).map_err(|_| MbError::from_kind(MbMgrErrorKind::ChannelClosed)),
+            #[cfg(feature = "async")]
+            JobCompletion::Async(tx) => tx.send(status).map_err(|_| MbError::from_kind(MbMgrErrorKind::ChannelClosed)),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct MbRuntime {
     mgr: MbMgr,
@@ -21,7 +41,7 @@ pub struct MbRuntime {
 
 #[derive(Debug)]
 pub struct MbRuntimeHandle {
-    pub join_handle: thread::JoinHandle<()>,
+    join_handle: thread::JoinHandle<Result<(), MbError>>,
     job_tx: mpsc::Sender<MbJobRequest>,
 }
 
@@ -34,7 +54,7 @@ pub struct MbRuntimeInit {
 pub(crate) struct MbJobRequest {
     pub handle: Option<MbJobHandle<'static>>,
     pub operation: Box<dyn Operation<'static> + Send>,
-    pub completion: mpsc::SyncSender<JobStatus>,
+    pub completion: JobCompletion,
 }
 
 // SAFETY: MbJobRequest is safe to send between threads, until handle is None
@@ -68,8 +88,9 @@ impl MbRuntime {
         self.job_queue.push_back(job_request);
 
         for _ in 0..completion_count {
+            // SAFETY: This unwrap will never fail...
             let prev_job_request = self.job_queue.pop_front().unwrap();
-            prev_job_request.completion.send(JobStatus{status: ImbStatus::IMB_STATUS_COMPLETED}).unwrap();
+            prev_job_request.completion.send(JobStatus{status: ImbStatus::IMB_STATUS_COMPLETED})?;
         }
 
 
@@ -95,6 +116,14 @@ impl MbRuntime {
 
 
 impl MbRuntimeHandle {
+
+    pub fn join(self) -> Result<(), MbError> {
+        match self.join_handle.join() {
+            Ok(result) => result, 
+            Err(_) => Err(MbError::from_kind(MbMgrErrorKind::RuntimeError)),
+        }
+    }
+
     /// Submit a job with scoped lifetime guarantees
     ///
     /// This method blocks until the job completes, ensuring that any
@@ -105,19 +134,19 @@ impl MbRuntimeHandle {
     ) -> Result<JobStatus, MbError> {
         let (completion_tx, completion_rx) = mpsc::sync_channel(1);
 
-        let boxed: Box<dyn Operation<'scope> + Send + 'scope> = Box::new(operation);
+        let boxed_operation: Box<dyn Operation<'scope> + Send + 'scope> = Box::new(operation);
 
         // Transmute to 'static for storage
         // SAFETY: This is safe because:
         // 1. We block on completion_rx.recv() below
         // 2. The operation completes before this function returns
         // 3. Therefore, borrowed data ('scope) remains valid throughout
-        let erased: Box<dyn Operation<'static> + Send> = unsafe { std::mem::transmute(boxed) };
+        let erased_operation: Box<dyn Operation<'static> + Send> = unsafe { std::mem::transmute(boxed_operation) };
 
         let request = MbJobRequest {
             handle: None,
-            operation: erased,
-            completion: completion_tx,
+            operation: erased_operation,
+            completion: JobCompletion::Sync(completion_tx),
         };
 
         self.job_tx
@@ -129,6 +158,33 @@ impl MbRuntimeHandle {
             .recv()
             .map_err(|_| MbError::from_kind(MbMgrErrorKind::CompletionFailed))
     }
+
+
+     /// Submit a job with async/await support (only available with "async" feature)
+     #[cfg(feature = "async")]
+     pub async fn publish_job_async<'scope>(
+         &self,
+         operation: impl Operation<'scope> + Send + 'scope,
+     ) -> Result<JobStatus, MbError> {
+         let (completion_tx, completion_rx) = oneshot::channel();
+ 
+         let boxed_operation: Box<dyn Operation<'scope> + Send + 'scope> = Box::new(operation);
+         let erased_operation: Box<dyn Operation<'static> + Send> = unsafe { std::mem::transmute(boxed_operation) };
+ 
+         let request = MbJobRequest {
+             handle: None,
+             operation: erased_operation,
+             completion: JobCompletion::Async(completion_tx),
+         };
+ 
+         self.job_tx
+             .send(request)
+             .map_err(|_| MbError::from_kind(MbMgrErrorKind::ChannelClosed))?;
+ 
+         completion_rx
+             .await
+             .map_err(|_| MbError::from_kind(MbMgrErrorKind::CompletionFailed))
+     }
 }
 
 impl MbRuntimeInit {
@@ -147,18 +203,18 @@ impl MbRuntimeInit {
     }
 }
 
-pub fn spawn_runtime() -> MbRuntimeHandle {
+pub fn spawn_runtime() -> Result<MbRuntimeHandle, MbError> {
     spawn_runtime_with_capacity(128)
 }
 
-pub fn spawn_runtime_with_capacity(capacity: usize) -> MbRuntimeHandle {
+pub fn spawn_runtime_with_capacity(capacity: usize) -> Result<MbRuntimeHandle, MbError> {
     let (job_tx, job_rx) = mpsc::channel();
 
     let init = MbRuntimeInit { job_rx, capacity };
 
     let join_handle = std::thread::spawn(move || {
-        init.run().map_err(|_| MbError::from_kind(MbMgrErrorKind::RuntimeError)).unwrap();
+        init.run()
     });
 
-    MbRuntimeHandle { job_tx, join_handle: join_handle }
+    Ok(MbRuntimeHandle { job_tx, join_handle: join_handle })
 }

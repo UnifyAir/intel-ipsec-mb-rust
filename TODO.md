@@ -30,6 +30,7 @@
 - [ ] Combine `get_next_job`, `fill_job`, and `submit_job` functions
 - [ ] For advanced usage, provide the above combined functions as unsafe functions
 - [ ] Fix naming inconsistency between `mb_mgr` and `mgr`
+- [ ] Add proper graceful runtime shutdown function
 
 ## Traits & Debugging
 - [ ] Add derive `Debug`, `Copy`, and other suitable traits where needed

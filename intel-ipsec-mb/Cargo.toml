@@ -4,15 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = []
+default = ["async"]
 
 # Allow forcing specific architecture at runtime (increases binary size)
 # Only enable this if you need runtime architecture selection based on
 # configuration files or other runtime decisions.
 allow-forced = []
 
+# Enable async/await support with Tokio
+async = ["tokio"]
+
 [dependencies]
 intel-ipsec-mb-sys = { path = "../intel-ipsec-mb-sys" }
+tokio = { version = "1.48.0", features = ["full"], optional = true }
 
 [[bin]]
 name = "intel-ipsec-mb"
