@@ -17,6 +17,14 @@ use std::task::Poll;
 #[derive(Copy, Clone, Eq, Hash, PartialEq)]
 pub struct MbJob(pub Option<NonNull<ImbJob>>);
 
+impl MbJob {
+    pub fn as_ptr(&self) -> *mut ImbJob {
+        // SAFETY: as_ptr should only be called when the job is not null,
+        // if the user is calling this on None, it will panic
+        self.0.unwrap().as_ptr()
+    }
+}
+
 pub struct MbJobHandle<'anchor> {
     job_id: *const ImbJob,
     _anchor: PhantomData<&'anchor ()>,
@@ -57,13 +65,28 @@ pub struct JobStatus {
     pub status: ImbStatus,
 }
 
-impl MbJob {
-    pub fn as_ptr(&self) -> *mut ImbJob {
-        // SAFETY: as_ptr should only be called when the job is not null,
-        // if the user is calling this on None, it will panic
-        self.0.unwrap().as_ptr()
+pub struct BurstSession<const N: usize>([MbJob; N]);
+
+impl<const N: usize> BurstSession<N> {
+    pub unsafe fn get_next_burst(&mut self, mb_mgr: &mut MbMgr) -> Result<usize, MbError> {
+        unsafe { mb_mgr.get_next_burst(&mut self.0) }
+    }
+
+    pub unsafe fn submit_burst(&mut self, mb_mgr: &mut MbMgr, count: usize) -> Result<usize, MbError> {
+        unsafe { mb_mgr.submit_burst(&mut self.0, count) }
+    }
+
+    pub unsafe fn submit_burst_nocheck(&mut self, mb_mgr: &mut MbMgr, count: usize) -> Result<usize, MbError> {
+        unsafe { mb_mgr.submit_burst_nocheck(&mut self.0, count) }
+    }
+
+    pub unsafe fn flush_burst(&mut self, mb_mgr: &mut MbMgr, count: usize) -> Result<usize, MbError> {
+        unsafe { mb_mgr.flush_burst(&mut self.0, count) }
     }
 }
+
+
+
 
 impl MbMgr {
     pub unsafe fn get_next_job(&self) -> Result<MbJob, MbError> {
@@ -317,5 +340,58 @@ impl MbMgr {
         }
         
         Ok(completion_count)
+    }
+
+    pub fn handoff_job_burst<'anchor, T, const N: usize>(
+        &self,
+        burst_session: &mut BurstSession<N>,
+        operations: &mut [T; N],
+    ) -> Result<([MbJobHandle<'anchor>; N], usize), MbError>
+    where
+        T: Operation<'anchor> + ?Sized,
+    {
+        todo!()
+         // SAFETY CHECK: Prevent UB from reused job pointers
+         if self.get_undrained_completion_count() > 0 {
+            return Err(MbError::from_kind(
+                MbMgrErrorKind::UndrainedCompletions
+            ));
+        }
+
+        let job = unsafe { self.get_next_job()? };
+
+        if job.0.is_none() {
+            return Err(MbError::from_kind(MbMgrErrorKind::NoJobAvailable));
+        }
+
+        operation.fill_job(&job, &self)?;
+        let completed_from_submit = unsafe { self.submit_job()? };
+
+        let mut completion_count = 0;
+
+        if completed_from_submit.0.is_some() {
+            completion_count += 1;
+        }
+
+        // Drain get_completed_job (required by C API)
+        loop {
+            match unsafe { self.get_completed_job()? }.0 {
+                Some(_) => completion_count += 1,
+                None => break,
+            }
+        }
+
+        // Store count for safety check
+        if completion_count > 0 {
+            self.set_undrained_completion_count(completion_count);
+        }
+
+        Ok((
+            MbJobHandle {
+                job_id: job.0.unwrap().as_ptr() as *const ImbJob,
+                _anchor: PhantomData,
+            },
+            completion_count,
+        ))
     }
 }
