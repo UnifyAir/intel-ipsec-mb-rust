@@ -37,6 +37,9 @@ pub(crate) struct MbJobRequest {
     pub completion: mpsc::SyncSender<JobStatus>,
 }
 
+// SAFETY: MbJobRequest is safe to send between threads, until handle is None
+unsafe impl Send for MbJobRequest {}
+
 impl std::fmt::Debug for MbJobRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MbJobRequest")
@@ -60,15 +63,15 @@ impl MbRuntime {
     }
 
     fn process_job(&mut self, mut job_request: MbJobRequest) -> Result<(), MbError> {
-        let (handle, did_last_job_finish) = self.mgr.handoff_job(&mut *job_request.operation)?;
+        let (handle, completion_count) = self.mgr.handoff_job(&mut *job_request.operation)?;
         job_request.handle = Some(handle);
         self.job_queue.push_back(job_request);
 
-        if did_last_job_finish == 0 {
+        for _ in 0..completion_count {
             let prev_job_request = self.job_queue.pop_front().unwrap();
-            prev_job_request.handle.unwrap().resolve().unwrap();
             prev_job_request.completion.send(JobStatus{status: ImbStatus::IMB_STATUS_COMPLETED}).unwrap();
         }
+
 
         if self.should_flush() {
             self.flush()?;
@@ -77,6 +80,7 @@ impl MbRuntime {
         Ok(())
     }
 
+    #[inline]
     fn should_flush(&self) -> bool {
         false 
     }

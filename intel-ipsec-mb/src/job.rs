@@ -30,32 +30,25 @@ pub struct MbJobHandle<'anchor> {
     _anchor: PhantomData<&'anchor ()>,
 }
 
-//SAFETY: we are just using *const ImbJob, as an identifier for the job, not for the job itself
-unsafe impl Send for MbJobHandle<'static> {}
-
 impl<'anchor> MbJobHandle<'anchor> {
-    pub fn resolve(self) -> Result<(), MbError> {
-        mem::forget(self);
-        Ok(())
-    }
-
-    pub fn get_job_status(&self) -> Result<JobStatus, MbError> {
+    // SAFETY: this function is made unsafe, just to give a heads up
+    // that get_job_status might return the status of the other job
+    // when the same job object is re-used by the intel-ipsec-mb library
+    pub unsafe fn get_job_status(&self) -> Result<JobStatus, MbError> {
         let status = unsafe { (*self.job_id).status };
         Ok(JobStatus { status })
     }
 }
 
 impl<'anchor> Drop for MbJobHandle<'anchor> {
-    // Prefer using the resolve method instead of dropping the job handle
-    // that will give the insight of the job flow inside the intel-ipsec-mb library
     fn drop(&mut self) {
-        if let Ok(job_status) = self.get_job_status() {
+        if let Ok(job_status) = unsafe { self.get_job_status() } {
             if job_status.status == ImbStatus::IMB_STATUS_COMPLETED {
                 return;
             }
         }
         panic!(
-            "Undefined behaviour: MbJobHandle was dropped before being properly completed! Dropping an unresolved JobHandle will cause undefined behaviour. You must consume a JobHandle by calling its completion methods (e.g., wait, complete, or poll)."
+            "Undefined behaviour: MbJobHandle was dropped before being properly completed! Dropping an unresolved JobHandle will cause undefined behaviour. JobHandle should be alive until the job is completed."
         );
     }
 }
@@ -82,6 +75,13 @@ impl<const N: usize> BurstSession<N> {
 
     pub unsafe fn flush_burst(&mut self, mb_mgr: &mut MbMgr, count: usize) -> Result<usize, MbError> {
         unsafe { mb_mgr.flush_burst(&mut self.0, count) }
+    }
+
+    pub fn set_session(&self, mb_mgr: &mut MbMgr) -> Result<u32, MbError> {
+        if self.0.is_empty() {
+            return Err(MbError::from_kind(MbMgrErrorKind::NullJob));
+        }
+        mb_mgr.set_session(&self.0[0])
     }
 }
 
@@ -279,13 +279,6 @@ impl MbMgr {
     where
         T: Operation<'anchor> + ?Sized,
     {
-         // SAFETY CHECK: Prevent UB from reused job pointers
-         if self.get_undrained_completion_count() > 0 {
-            return Err(MbError::from_kind(
-                MbMgrErrorKind::UndrainedCompletions
-            ));
-        }
-
         let job = unsafe { self.get_next_job()? };
 
         if job.0.is_none() {
@@ -301,17 +294,11 @@ impl MbMgr {
             completion_count += 1;
         }
 
-        // Drain get_completed_job (required by C API)
         loop {
             match unsafe { self.get_completed_job()? }.0 {
                 Some(_) => completion_count += 1,
                 None => break,
             }
-        }
-
-        // Store count for safety check
-        if completion_count > 0 {
-            self.set_undrained_completion_count(completion_count);
         }
 
         Ok((
@@ -323,7 +310,7 @@ impl MbMgr {
         ))
     }
 
-    pub fn force_completion(&self) -> Result<usize, MbError> {
+    pub fn force_complete_job(&self) -> Result<usize, MbError> {
         let mut completion_count = 0;
         
         // Just loop flush_job until NULL
@@ -332,11 +319,6 @@ impl MbMgr {
                 Some(_) => completion_count += 1,
                 None => break,  // No more jobs to flush
             }
-        }
-        
-        // Mark that completions need handling if any completed
-        if completion_count > 0 {
-            self.set_undrained_completion_count(completion_count);
         }
         
         Ok(completion_count)
@@ -348,50 +330,50 @@ impl MbMgr {
         operations: &mut [T; N],
     ) -> Result<([MbJobHandle<'anchor>; N], usize), MbError>
     where
-        T: Operation<'anchor> + ?Sized,
+        T: Operation<'anchor>,
     {
         todo!()
-         // SAFETY CHECK: Prevent UB from reused job pointers
-         if self.get_undrained_completion_count() > 0 {
-            return Err(MbError::from_kind(
-                MbMgrErrorKind::UndrainedCompletions
-            ));
-        }
+        //  // SAFETY CHECK: Prevent UB from reused job pointers
+        //  if self.get_undrained_completion_count() > 0 {
+        //     return Err(MbError::from_kind(
+        //         MbMgrErrorKind::UndrainedCompletions
+        //     ));
+        // }
 
-        let job = unsafe { self.get_next_job()? };
+        // let job = unsafe { self.get_next_job()? };
 
-        if job.0.is_none() {
-            return Err(MbError::from_kind(MbMgrErrorKind::NoJobAvailable));
-        }
+        // if job.0.is_none() {
+        //     return Err(MbError::from_kind(MbMgrErrorKind::NoJobAvailable));
+        // }
 
-        operation.fill_job(&job, &self)?;
-        let completed_from_submit = unsafe { self.submit_job()? };
+        // operation.fill_job(&job, &self)?;
+        // let completed_from_submit = unsafe { self.submit_job()? };
 
-        let mut completion_count = 0;
+        // let mut completion_count = 0;
 
-        if completed_from_submit.0.is_some() {
-            completion_count += 1;
-        }
+        // if completed_from_submit.0.is_some() {
+        //     completion_count += 1;
+        // }
 
-        // Drain get_completed_job (required by C API)
-        loop {
-            match unsafe { self.get_completed_job()? }.0 {
-                Some(_) => completion_count += 1,
-                None => break,
-            }
-        }
+        // // Drain get_completed_job (required by C API)
+        // loop {
+        //     match unsafe { self.get_completed_job()? }.0 {
+        //         Some(_) => completion_count += 1,
+        //         None => break,
+        //     }
+        // }
 
-        // Store count for safety check
-        if completion_count > 0 {
-            self.set_undrained_completion_count(completion_count);
-        }
+        // // Store count for safety check
+        // if completion_count > 0 {
+        //     self.set_undrained_completion_count(completion_count);
+        // }
 
-        Ok((
-            MbJobHandle {
-                job_id: job.0.unwrap().as_ptr() as *const ImbJob,
-                _anchor: PhantomData,
-            },
-            completion_count,
-        ))
+        // Ok((
+        //     MbJobHandle {
+        //         job_id: job.0.unwrap().as_ptr() as *const ImbJob,
+        //         _anchor: PhantomData,
+        //     },
+        //     completion_count,
+        // ))
     }
 }

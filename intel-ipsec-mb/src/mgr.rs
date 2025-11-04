@@ -18,7 +18,6 @@ use std::marker::PhantomData;
 
 pub struct MbMgr {
     mgr: NonNull<ImbMgr>,
-    undrained_completion_count: Cell<usize>,
     _not_thread_safe: PhantomData<Rc<()>>,
 }
 
@@ -57,25 +56,6 @@ impl MbMgr {
         Self::with_config(MbMgrConfig::default())
     }
 
-    /// Acknowledge that completed jobs have been handled
-    /// 
-    /// MUST be called after handling completions returned by handoff_job, handoff_job_batch
-    /// before calling handoff_job, handoff_job_batch again, otherwise handoff_job, handoff_job_batch will error.
-    #[inline]
-    pub fn ack_completions(&self) {
-        self.undrained_completion_count.set(0);
-    }
-
-    #[inline]
-    pub fn get_undrained_completion_count(&self) -> usize {
-        self.undrained_completion_count.get()
-    }
-
-    #[inline]
-    pub fn set_undrained_completion_count(&self, count: usize) {
-        self.undrained_completion_count.set(count);
-    }
-
     pub fn with_config(config: MbMgrConfig) -> Result<Self, MbError> {
         unsafe {
             let mgr = alloc_mb_mgr(config.to_flags());
@@ -87,7 +67,6 @@ impl MbMgr {
             let mgr = NonNull::new_unchecked(mgr);
             let mut manager = Self {
                 mgr,
-                undrained_completion_count: Cell::new(0),
                 _not_thread_safe: PhantomData,
             };
 
