@@ -926,11 +926,11 @@
 //     let mut thread_handles = vec![];
     
 //     // Spawn 10 worker threads
-//     for thread_id in 0..10 {
+//     for thread_id in 0..1000000 {
 //         let handle = Arc::clone(&handle);
         
 //         let thread_handle = thread::spawn(move || {
-//             println!("Thread {} started", thread_id);
+//             // println!("Thread {} started", thread_id);
             
 //             // Create input and output buffers
 //             // let input: Vec<u8> = vec![
@@ -941,7 +941,7 @@
 //             let mut output = vec![0u8; 20];
             
 //             // Create SHA-1 operation
-//             let sha = Sha1OneBlock {
+//             let sha = Sha1{
 //                 buffer: &input,
 //                 output: &mut output,
 //             };
@@ -949,7 +949,7 @@
 //             // Submit job and wait for completion
 //             match handle.publish_job(sha) {
 //                 Ok(status) => {
-//                     println!("Thread {}: Status = {:?}", thread_id, status);
+//                     // println!("Thread {}: Status = {:?}", thread_id, status);
 //                     println!("Thread {}: Hash = {:?}", thread_id, output);
 //                 }
 //                 Err(e) => {
@@ -957,7 +957,7 @@
 //                 }
 //             }
             
-//             println!("Thread {} finished", thread_id);
+//             // println!("Thread {} finished", thread_id);
 //         });
         
 //         thread_handles.push(thread_handle);
@@ -1006,7 +1006,13 @@
 //             // println!("Task {} started", task_id);
             
 //             // Create input and output buffers
-//             let input: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+//             // let input: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+//             let input: Vec<u8> = vec![
+//     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+//     17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+//     33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+//     49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64
+// ];
 //             let mut output = vec![0u8; 20];
             
 //             // Create SHA-1 operation
@@ -1019,7 +1025,7 @@
 //             match handle.publish_job_async(sha).await {
 //                 Ok(status) => {
 //                     // println!("Task {}: Status = {:?}", task_id, status);
-//                     println!("Task {}: Hash = {:?}", task_id, output);
+//                     println!("Task {}: Hash = {:?}", " . ", output);
 //                 }
 //                 Err(e) => {
 //                     eprintln!("Task {}: Error = {:?}", task_id, e);
@@ -1048,6 +1054,89 @@
 // }
 
 
+// use intel_ipsec_mb::runtime::spawn_runtime;
+// use std::sync::Arc;
+// use intel_ipsec_mb::operation::hash::sha::Sha1OneBlock;
+
+// #[tokio::main]
+// async fn main() {
+//     println!("Starting MB Runtime...");
+    
+//     let handle = spawn_runtime().unwrap();
+//     let handle = Arc::new(handle);
+    
+//     println!("Creating tasks...");
+    
+//     let mut tasks = vec![];
+    
+//     for task_id in 0..1000000 {  // Start with 100 to debug
+//         let handle = Arc::clone(&handle);
+        
+//         let task = tokio::spawn(async move {
+//             // Use Box to ensure buffers stay on heap
+//             let input = Box::new([1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+//             let mut output = Box::new([0u8; 20]);
+            
+//             let sha = Sha1OneBlock {
+//                 buffer: &*input,
+//                 output: &mut *output,
+//             };
+            
+//             match handle.publish_job_async(sha).await {
+//                 Ok(_status) => {
+//                     println!("Task {}: Hash = {:?}", task_id, &*output);
+//                 }
+//                 Err(e) => {
+//                     eprintln!("Task {}: Error = {:?}", task_id, e);
+//                 }
+//             }
+//         });
+        
+//         tasks.push(task);
+//     }
+    
+//     println!("All async tasks spawned, waiting for completion...");
+    
+//     for (i, task) in tasks.into_iter().enumerate() {
+//         task.await.expect(&format!("Task {} panicked", i));
+//     }
+    
+//     println!("All async tasks completed!");
+// }
+
+
+// use intel_ipsec_mb::runtime::spawn_runtime;
+// use intel_ipsec_mb::operation::hash::sha::Sha1;
+
+// fn main() {
+//     println!("Starting MB Runtime...");
+    
+//     let handle = spawn_runtime().unwrap();
+    
+//     // Test with SINGLE thread first
+//     for i in 0..100 {
+//         let input: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+//         let mut output = vec![0u8; 20];
+        
+//         let sha = Sha1{
+//             buffer: &input,
+//             output: &mut output,
+//         };
+        
+//         match handle.publish_job(sha) {
+//             Ok(status) => {
+//                 println!("Job {}: Hash = {:?}", i, output);
+//             }
+//             Err(e) => {
+//                 eprintln!("Job {}: Error = {:?}", i, e);
+//             }
+//         }
+//     }
+    
+//     println!("Test complete!");
+// }
+
+
 use intel_ipsec_mb::runtime::spawn_runtime;
 use std::sync::Arc;
 use intel_ipsec_mb::operation::hash::sha::Sha1OneBlock;
@@ -1056,34 +1145,49 @@ use intel_ipsec_mb::operation::hash::sha::Sha1OneBlock;
 async fn main() {
     println!("Starting MB Runtime...");
     
+    // Spawn the runtime thread
     let handle = spawn_runtime().unwrap();
     let handle = Arc::new(handle);
     
-    println!("Creating tasks...");
+    println!("Creating 10 async tasks...");
     
     let mut tasks = vec![];
     
-    for task_id in 0..1000000 {  // Start with 100 to debug
+    // Spawn 10 async tasks
+    for task_id in 0..100000 {
         let handle = Arc::clone(&handle);
         
         let task = tokio::spawn(async move {
-            // Use Box to ensure buffers stay on heap
-            let input = Box::new([1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-            let mut output = Box::new([0u8; 20]);
+            // println!("Task {} started", task_id);
             
+            // Create input and output buffers
+            // let input: Vec<u8> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+            let input: Vec<u8> = vec![
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+    33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+    49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64
+];
+            let mut output = vec![0u8; 20];
+            
+            // Create SHA-1 operation
             let sha = Sha1OneBlock {
-                buffer: &*input,
-                output: &mut *output,
+                buffer: &input,
+                output: &mut output,
             };
             
+            // Submit job and AWAIT completion (non-blocking!)
             match handle.publish_job_async(sha).await {
-                Ok(_status) => {
-                    println!("Task {}: Hash = {:?}", task_id, &*output);
+                Ok(status) => {
+                    // println!("Task {}: Status = {:?}", task_id, status);
+                    println!("Task {}: Hash = {:?}", " . ", output);
                 }
                 Err(e) => {
                     eprintln!("Task {}: Error = {:?}", task_id, e);
                 }
             }
+            
+            // println!("Task {} finished", task_id);
         });
         
         tasks.push(task);
@@ -1091,9 +1195,16 @@ async fn main() {
     
     println!("All async tasks spawned, waiting for completion...");
     
+    // Await all tasks concurrently
     for (i, task) in tasks.into_iter().enumerate() {
         task.await.expect(&format!("Task {} panicked", i));
     }
     
     println!("All async tasks completed!");
+    
+    // Gracefully shutdown the runtime
+    drop(handle);
+    
+    println!("Test complete!");
 }
+

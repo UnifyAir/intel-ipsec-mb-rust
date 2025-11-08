@@ -14,7 +14,7 @@ use std::ptr::NonNull;
 use std::task::Context;
 use std::task::Poll;
 
-#[derive(Copy, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug)]
 pub struct MbJob(pub Option<NonNull<ImbJob>>);
 
 impl MbJob {
@@ -25,8 +25,9 @@ impl MbJob {
     }
 }
 
+#[derive(Debug)]
 pub struct MbJobHandle<'anchor> {
-    job_id: *const ImbJob,
+    job: MbJob,
     _anchor: PhantomData<&'anchor ()>,
 }
 
@@ -35,7 +36,7 @@ impl<'anchor> MbJobHandle<'anchor> {
     // that get_job_status might return the status of the other job
     // when the same job object is re-used by the intel-ipsec-mb library
     pub unsafe fn get_job_status(&self) -> Result<JobStatus, MbError> {
-        let status = unsafe { (*self.job_id).status };
+        let status = unsafe { (*self.job.as_ptr()).status };
         Ok(JobStatus { status })
     }
 }
@@ -61,23 +62,27 @@ pub struct JobStatus {
 pub struct BurstSession<const N: usize>([MbJob; N]);
 
 impl<const N: usize> BurstSession<N> {
-    pub unsafe fn get_next_burst(&mut self, mb_mgr: &mut MbMgr) -> Result<usize, MbError> {
-        unsafe { mb_mgr.get_next_burst(&mut self.0) }
+    pub fn new() -> Self {
+        Self(std::array::from_fn(|_| MbJob(None)))
     }
 
-    pub unsafe fn submit_burst(&mut self, mb_mgr: &mut MbMgr, count: usize) -> Result<usize, MbError> {
+    pub unsafe fn get_next_burst(&mut self, mb_mgr: &MbMgr, count: usize) -> Result<usize, MbError> {
+        unsafe { mb_mgr.get_next_burst(&mut self.0, count) }
+    }
+
+    pub unsafe fn submit_burst(&mut self, mb_mgr: &MbMgr, count: usize) -> Result<usize, MbError> {
         unsafe { mb_mgr.submit_burst(&mut self.0, count) }
     }
 
-    pub unsafe fn submit_burst_nocheck(&mut self, mb_mgr: &mut MbMgr, count: usize) -> Result<usize, MbError> {
+    pub unsafe fn submit_burst_nocheck(&mut self, mb_mgr: &MbMgr, count: usize) -> Result<usize, MbError> {
         unsafe { mb_mgr.submit_burst_nocheck(&mut self.0, count) }
     }
 
-    pub unsafe fn flush_burst(&mut self, mb_mgr: &mut MbMgr, count: usize) -> Result<usize, MbError> {
+    pub unsafe fn flush_burst(&mut self, mb_mgr: &MbMgr, count: usize) -> Result<usize, MbError> {
         unsafe { mb_mgr.flush_burst(&mut self.0, count) }
     }
 
-    pub fn set_session(&self, mb_mgr: &mut MbMgr) -> Result<u32, MbError> {
+    pub fn set_session(&self, mb_mgr: &MbMgr) -> Result<u32, MbError> {
         if self.0.is_empty() {
             return Err(MbError::from_kind(MbMgrErrorKind::NullJob));
         }
@@ -159,14 +164,14 @@ impl MbMgr {
         Ok(MbJob(Some(unsafe { NonNull::new_unchecked(job) })))
     }
 
-    pub unsafe fn get_next_burst<const N: usize>(&self, jobs:&mut [MbJob; N]) -> Result<usize, MbError> {
+    pub unsafe fn get_next_burst<const N: usize>(&self, jobs:&mut [MbJob; N], count: usize) -> Result<usize, MbError> {
         let mut job_ptrs: [*mut ImbJob; N] = [std::ptr::null_mut(); N];
 
         // SAFETY: The pointer passed to get_next_burst is assumed to be valid otherwise we
         // would not be having a MbMgr instance
         let num_jobs = self.exec(|mgr_mut_ptr| unsafe {
             let get_next_burst_fn = (*mgr_mut_ptr).get_next_burst.unwrap();
-            get_next_burst_fn(mgr_mut_ptr, N as u32, job_ptrs.as_mut_ptr())
+            get_next_burst_fn(mgr_mut_ptr, count as u32, job_ptrs.as_mut_ptr())
         })?;
 
         for i in 0..num_jobs as usize {
@@ -279,16 +284,20 @@ impl MbMgr {
     where
         T: Operation<'anchor> + ?Sized,
     {
-        let job = unsafe { self.get_next_job()? };
+        let mut job = unsafe { self.get_next_job()? };
+        let mut completion_count = 0;
 
         if job.0.is_none() {
-            return Err(MbError::from_kind(MbMgrErrorKind::NoJobAvailable));
+            // Think: Should we flush all the jobs or just create space for 1 job?
+            completion_count += self.force_complete_job()?;
+            job = unsafe { self.get_next_job()? };
+            if job.0.is_none() {
+                return Err(MbError::from_kind(MbMgrErrorKind::NoJobAvailable));
+            }
         }
 
         operation.fill_job(&job, &self)?;
         let completed_from_submit = unsafe { self.submit_job()? };
-
-        let mut completion_count = 0;
 
         if completed_from_submit.0.is_some() {
             completion_count += 1;
@@ -303,7 +312,7 @@ impl MbMgr {
 
         Ok((
             MbJobHandle {
-                job_id: job.0.unwrap().as_ptr() as *const ImbJob,
+                job: job,
                 _anchor: PhantomData,
             },
             completion_count,
@@ -328,52 +337,39 @@ impl MbMgr {
         &self,
         burst_session: &mut BurstSession<N>,
         operations: &mut [T; N],
-    ) -> Result<([MbJobHandle<'anchor>; N], usize), MbError>
+    ) -> Result<([MbJobHandle<'anchor>; N], usize, usize), MbError>
     where
         T: Operation<'anchor>,
     {
-        todo!()
-        //  // SAFETY CHECK: Prevent UB from reused job pointers
-        //  if self.get_undrained_completion_count() > 0 {
-        //     return Err(MbError::from_kind(
-        //         MbMgrErrorKind::UndrainedCompletions
-        //     ));
-        // }
+        let mut num_jobs = unsafe { burst_session.get_next_burst(self, N)? };
+        let mut completion_count = 0;
+        if num_jobs == 0 {
+            completion_count += self.force_complete_job_burst(burst_session)?;
+            num_jobs = unsafe { burst_session.get_next_burst(self, N)? };
+            if num_jobs == 0 {
+                return Err(MbError::from_kind(MbMgrErrorKind::NoJobAvailable));
+            }
+        }
 
-        // let job = unsafe { self.get_next_job()? };
+        for i in 0..num_jobs {
+            operations[i].fill_job(&burst_session.0[i], &self)?;
+        }
 
-        // if job.0.is_none() {
-        //     return Err(MbError::from_kind(MbMgrErrorKind::NoJobAvailable));
-        // }
+        let completed_from_submit = unsafe { burst_session.submit_burst(self, N)? };
+        completion_count += completed_from_submit as usize;
 
-        // operation.fill_job(&job, &self)?;
-        // let completed_from_submit = unsafe { self.submit_job()? };
+        let mut job_handles: [MbJobHandle<'anchor>; N] = std::array::from_fn(|_| MbJobHandle { job: MbJob(None), _anchor: PhantomData });
 
-        // let mut completion_count = 0;
 
-        // if completed_from_submit.0.is_some() {
-        //     completion_count += 1;
-        // }
+        for i in 0..num_jobs {
+            job_handles[i].job = MbJob(Some(unsafe { NonNull::new_unchecked(burst_session.0[i].0.unwrap().as_ptr()) }));
+        }
 
-        // // Drain get_completed_job (required by C API)
-        // loop {
-        //     match unsafe { self.get_completed_job()? }.0 {
-        //         Some(_) => completion_count += 1,
-        //         None => break,
-        //     }
-        // }
+        Ok((job_handles, num_jobs, completion_count))
+    }
 
-        // // Store count for safety check
-        // if completion_count > 0 {
-        //     self.set_undrained_completion_count(completion_count);
-        // }
-
-        // Ok((
-        //     MbJobHandle {
-        //         job_id: job.0.unwrap().as_ptr() as *const ImbJob,
-        //         _anchor: PhantomData,
-        //     },
-        //     completion_count,
-        // ))
+    pub fn force_complete_job_burst<const N: usize>(&self, burst_session: &mut BurstSession<N>) -> Result<usize, MbError> {
+        let completion_count = unsafe { burst_session.flush_burst(self, N)? };
+        Ok(completion_count as usize)
     }
 }
